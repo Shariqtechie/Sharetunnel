@@ -3,20 +3,22 @@ package main
 import (
 	"crypto/rand"
 	"crypto/subtle"
-	_ "embed"
+	"embed"
 	"encoding/hex"
 	"encoding/json"
+	"io/fs"
 	"net/http"
 	"sync"
 	"time"
 )
 
-//go:embed index.html
-var indexHTML []byte
+//go:embed web
+var webFS embed.FS
 
 type Panel struct {
 	cfg      Config
 	m        *Manager
+	u        *Updater
 	password string
 
 	mu       sync.Mutex
@@ -24,8 +26,8 @@ type Panel struct {
 	fails    []time.Time
 }
 
-func NewPanel(cfg Config, m *Manager, password string) *Panel {
-	return &Panel{cfg: cfg, m: m, password: password, sessions: map[string]time.Time{}}
+func NewPanel(cfg Config, m *Manager, u *Updater, password string) *Panel {
+	return &Panel{cfg: cfg, m: m, u: u, password: password, sessions: map[string]time.Time{}}
 }
 
 func writeJSON(w http.ResponseWriter, code int, v any) {
@@ -122,14 +124,14 @@ func (p *Panel) logout(w http.ResponseWriter, r *http.Request) {
 
 func (p *Panel) routes() http.Handler {
 	mux := http.NewServeMux()
-	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/" {
-			http.NotFound(w, r)
-			return
-		}
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		w.Header().Set("Cache-Control", "no-store")
-		w.Write(indexHTML)
+	sub, _ := fs.Sub(webFS, "web")
+	static := http.FileServer(http.FS(sub))
+	mux.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "no-cache")
+		static.ServeHTTP(w, r)
+	}))
+	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) { // public, used by the updater
+		writeJSON(w, 200, map[string]string{"version": version})
 	})
 	mux.HandleFunc("/api/login", p.login)
 	mux.HandleFunc("/api/logout", p.logout)
@@ -152,6 +154,33 @@ func (p *Panel) routes() http.Handler {
 	mux.HandleFunc("/api/stop", p.auth(true, func(w http.ResponseWriter, r *http.Request) {
 		p.m.Stop()
 		writeJSON(w, 200, map[string]bool{"ok": true})
+	}))
+	mux.HandleFunc("/api/update", p.auth(false, func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, 200, p.u.Info())
+	}))
+	mux.HandleFunc("/api/update/check", p.auth(true, func(w http.ResponseWriter, r *http.Request) {
+		p.u.Check()
+		writeJSON(w, 200, p.u.Info())
+	}))
+	mux.HandleFunc("/api/update/apply", p.auth(true, func(w http.ResponseWriter, r *http.Request) {
+		if err := p.u.Apply(); err != nil {
+			writeJSON(w, 400, map[string]string{"error": err.Error()})
+			return
+		}
+		writeJSON(w, 200, map[string]bool{"ok": true})
+	}))
+	mux.HandleFunc("/api/update/settings", p.auth(true, func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Mode string `json:"mode"`
+			Hour int    `json:"hour"`
+		}
+		json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<10)).Decode(&body)
+		if (body.Mode != "notify" && body.Mode != "auto" && body.Mode != "off") || body.Hour < 0 || body.Hour > 23 {
+			writeJSON(w, 400, map[string]string{"error": "invalid settings"})
+			return
+		}
+		updateSettings(p.cfg, func(s *Settings) { s.UpdateMode, s.AutoHour = body.Mode, body.Hour })
+		writeJSON(w, 200, p.u.Info())
 	}))
 	return mux
 }

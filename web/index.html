@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ShareTunnel</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E🌐%3C/text%3E%3C/svg%3E">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div class="bg"></div>
+<main class="wrap">
+
+  <header class="top">
+    <div class="brand">
+      <div class="logo">🌐</div>
+      <div><h1>ShareTunnel</h1><span class="ver" id="ver"></span></div>
+    </div>
+    <button class="btn ghost sm hidden" id="logout">Log out</button>
+  </header>
+
+  <section id="login" class="card hidden">
+    <h2>Log in</h2>
+    <div class="row">
+      <input id="pw" class="grow" type="password" placeholder="Panel password" autocomplete="current-password">
+      <button class="btn" id="loginBtn">Log in</button>
+    </div>
+    <div class="msg bad" id="loginErr"></div>
+  </section>
+
+  <div id="main" class="hidden">
+
+    <section id="banner" class="banner hidden">
+      <div class="banner-head">
+        <div class="banner-icon">🚀</div>
+        <div class="grow">
+          <strong id="bannerTitle">Update available</strong>
+          <div class="dim" id="bannerSub"></div>
+        </div>
+        <button class="btn" id="applyBtn">Update now</button>
+      </div>
+      <details><summary>What's new</summary><pre id="notes"></pre></details>
+    </section>
+
+    <section class="card hero">
+      <div class="row between">
+        <span class="pill" id="pill"><span class="dot"></span><span id="statusText">…</span></span>
+        <button class="btn" id="toggle">…</button>
+      </div>
+      <div class="label">Public address</div>
+      <div class="row">
+        <div class="url grow" id="url">none</div>
+        <button class="btn" id="copyUrl" disabled>Copy</button>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="row between">
+        <h2>Shared from Nextcloud</h2>
+        <button class="btn ghost sm" id="refresh">Refresh</button>
+      </div>
+      <div id="shares"></div>
+      <div class="msg bad" id="shareErr"></div>
+    </section>
+
+    <section class="card">
+      <div class="row between">
+        <h2>Updates</h2>
+        <button class="btn ghost sm" id="checkBtn"><span class="spin hidden"></span><span class="lbl">Check for updates</span></button>
+      </div>
+      <div class="kv">
+        <div><span class="dim">Installed</span><b id="curVer">–</b></div>
+        <div><span class="dim">Latest</span><b id="latestVer">–</b></div>
+        <div><span class="dim">Last checked</span><b id="checked">never</b></div>
+      </div>
+      <div class="msg" id="updMsg"></div>
+      <div class="row settings">
+        <label class="dim" for="mode">When a new version is out</label>
+        <select id="mode">
+          <option value="notify">Just tell me</option>
+          <option value="auto">Update automatically</option>
+          <option value="off">Don't check</option>
+        </select>
+        <span id="hourBox" class="hidden row"><span class="dim">at</span><select id="hour"></select></span>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Log</h2>
+      <pre id="logs" class="logs"></pre>
+    </section>
+  </div>
+</main>
+
+<div id="toasts"></div>
+<div id="overlay" class="overlay hidden">
+  <div class="overlay-box"><div class="spin big"></div><strong id="ovTitle">Updating…</strong><div class="dim" id="ovSub">This takes about a minute. The page reloads by itself.</div></div>
+</div>
+
+<script src="js/app.js"></script>
+</body>
+</html>

@@ -2,8 +2,13 @@ name: build-and-publish
 
 on:
   push:
-    branches: [main]
-    tags: ["v*"]
+    branches: [main]      # every push builds the :edge test image
+    tags: ["v*"]          # pushing a tag like v0.1.0 publishes a release
+  workflow_dispatch:      # Actions tab -> Run workflow -> type a version
+    inputs:
+      version:
+        description: "Release version, e.g. 0.1.0 (leave empty to only build :edge)"
+        required: false
 
 permissions:
   contents: write   # create GitHub Releases
@@ -15,6 +20,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - id: ver
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          if [ -n "$INPUT_VERSION" ]; then v="${INPUT_VERSION#v}"
+          elif [ "$GITHUB_REF_TYPE" = "tag" ]; then v="${GITHUB_REF_NAME#v}"
+          else v="edge"; fi
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+          if [ "$v" = "edge" ]; then echo "release=false" >> "$GITHUB_OUTPUT"; else echo "release=true" >> "$GITHUB_OUTPUT"; fi
+
       - uses: docker/setup-buildx-action@v3
 
       - uses: docker/login-action@v3
@@ -23,27 +38,23 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ghcr.io/shariqtechie/sharetunnel
-          tags: |
-            type=raw,value=edge,enable={{is_default_branch}}
-            type=semver,pattern={{version}}
-            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
-
       - uses: docker/build-push-action@v6
         with:
           context: .
           push: true
           platforms: linux/amd64
-          tags: ${{ steps.meta.outputs.tags }}
-          build-args: VERSION=${{ steps.meta.outputs.version }}
+          build-args: VERSION=${{ steps.ver.outputs.version }}
+          tags: |
+            ghcr.io/shariqtechie/sharetunnel:${{ steps.ver.outputs.version }}
+            ${{ steps.ver.outputs.release == 'true' && 'ghcr.io/shariqtechie/sharetunnel:latest' || '' }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      # Runs LAST, so the release only appears after its image is ready to pull.
       - name: Create GitHub Release
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: steps.ver.outputs.release == 'true'
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: v${{ steps.ver.outputs.version }}
+          target_commitish: ${{ github.sha }}
           generate_release_notes: true

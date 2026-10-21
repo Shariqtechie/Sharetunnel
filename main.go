@@ -4,6 +4,7 @@
 //	sharetunnel run      command-line mode (no panel)
 //	sharetunnel shares   list public share links
 //	sharetunnel version
+//	sharetunnel apply-update   (internal: used by the updater helper container)
 package main
 
 import (
@@ -16,7 +17,6 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
-	"path/filepath"
 	"regexp"
 	"strings"
 	"syscall"
@@ -29,12 +29,14 @@ var urlRe = regexp.MustCompile(`https://[a-z0-9-]+\.trycloudflare\.com`)
 // ---------- config (environment variables) ----------
 
 type Config struct {
-	NCContainer  string // Nextcloud container name
-	NCURL        string // where cloudflared reaches Nextcloud
-	DBContainer  string // Postgres container name
-	TrustedIndex string // the trusted_domains slot this app owns
-	PanelPort    string
-	DataDir      string
+	NCContainer   string // Nextcloud container name
+	NCURL         string // where cloudflared reaches Nextcloud
+	DBContainer   string // Postgres container name
+	TrustedIndex  string // the trusted_domains slot this app owns
+	PanelPort     string
+	DataDir       string
+	Repo          string // GitHub owner/name for update checks
+	SelfContainer string // this container's own name
 }
 
 func getenv(key, def string) string {
@@ -46,35 +48,15 @@ func getenv(key, def string) string {
 
 func loadConfig() Config {
 	return Config{
-		NCContainer:  getenv("NC_CONTAINER", "nextcloud"),
-		NCURL:        getenv("NC_URL", "http://localhost:7580"),
-		DBContainer:  getenv("DB_CONTAINER", "db-nextcloud"),
-		TrustedIndex: getenv("TRUSTED_INDEX", "50"),
-		PanelPort:    getenv("PANEL_PORT", "9099"),
-		DataDir:      getenv("DATA_DIR", "/data"),
+		NCContainer:   getenv("NC_CONTAINER", "nextcloud"),
+		NCURL:         getenv("NC_URL", "http://localhost:7580"),
+		DBContainer:   getenv("DB_CONTAINER", "db-nextcloud"),
+		TrustedIndex:  getenv("TRUSTED_INDEX", "50"),
+		PanelPort:     getenv("PANEL_PORT", "9099"),
+		DataDir:       getenv("DATA_DIR", "/data"),
+		Repo:          getenv("GITHUB_REPO", "Shariqtechie/Sharetunnel"),
+		SelfContainer: getenv("SELF_CONTAINER", "sharetunnel"),
 	}
-}
-
-// ---------- saved on/off state (survives reboots) ----------
-
-func loadEnabled(cfg Config) bool {
-	b, err := os.ReadFile(filepath.Join(cfg.DataDir, "state.json"))
-	if err != nil {
-		return true // first run: start the tunnel
-	}
-	var s struct {
-		Enabled bool `json:"enabled"`
-	}
-	if json.Unmarshal(b, &s) != nil {
-		return true
-	}
-	return s.Enabled
-}
-
-func saveEnabled(cfg Config, v bool) {
-	os.MkdirAll(cfg.DataDir, 0o755)
-	b, _ := json.Marshal(map[string]any{"enabled": v, "schema": 1})
-	os.WriteFile(filepath.Join(cfg.DataDir, "state.json"), b, 0o644)
 }
 
 // ---------- Nextcloud trusted_domains ----------
@@ -214,6 +196,9 @@ func runTunnel(ctx context.Context, cfg Config, logf func(string, ...any), onURL
 				go onURL(u)
 			}
 		}
+		if strings.Contains(line, "canceled by remote") {
+			continue // someone stopped a download, harmless
+		}
 		if strings.Contains(line, " ERR ") || strings.Contains(line, " WRN ") {
 			logf("[cloudflared] %s", line)
 		}
@@ -230,13 +215,16 @@ func serve(cfg Config) {
 		os.Exit(1)
 	}
 	m := NewManager(cfg, true)
-	if loadEnabled(cfg) {
+	if loadSettings(cfg).Enabled {
 		m.Start()
 	}
-	srv := &http.Server{Addr: ":" + cfg.PanelPort, Handler: NewPanel(cfg, m, pw).routes()}
+	u := NewUpdater(cfg, m)
+	srv := &http.Server{Addr: ":" + cfg.PanelPort, Handler: NewPanel(cfg, m, u, pw).routes()}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	go u.loop(ctx)
+	go reportLastUpdate(ctx, m)
 	go func() {
 		<-ctx.Done()
 		m.Shutdown() // removes the trusted domain, keeps the saved on/off choice
@@ -272,6 +260,8 @@ func main() {
 		run(cfg)
 	case "shares":
 		printShares(cfg, "")
+	case "apply-update":
+		applyUpdate()
 	case "version":
 		fmt.Println(version)
 	default:

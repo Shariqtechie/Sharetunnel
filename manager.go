@@ -66,7 +66,7 @@ func (m *Manager) Start() {
 	m.cancel, m.done, m.status = cancel, done, "starting"
 	m.mu.Unlock()
 	if m.persist {
-		saveEnabled(m.cfg, true)
+		updateSettings(m.cfg, func(s *Settings) { s.Enabled = true })
 	}
 	go func() {
 		m.loop(ctx)
@@ -87,7 +87,7 @@ func (m *Manager) stop(remember bool) {
 	m.cancel, m.done, m.url, m.status = nil, nil, "", "stopped"
 	m.mu.Unlock()
 	if remember && m.persist {
-		saveEnabled(m.cfg, false)
+		updateSettings(m.cfg, func(s *Settings) { s.Enabled = false })
 	}
 }
 

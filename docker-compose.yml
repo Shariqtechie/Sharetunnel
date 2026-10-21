@@ -1,12 +1,14 @@
 services:
   sharetunnel:
-    image: ghcr.io/shariqtechie/sharetunnel:edge
-    container_name: sharetunnel
-    network_mode: host          # panel on :9099, reaches Nextcloud on localhost
+    image: ghcr.io/shariqtechie/sharetunnel:latest   # official releases only; use :edge to test unreleased changes
+    container_name: sharetunnel                      # must match SELF_CONTAINER (used by the updater)
+    network_mode: host                               # panel on :9099, reaches Nextcloud on localhost
     restart: unless-stopped
     environment:
-      PANEL_PASSWORD: "change-me"   # REQUIRED: pick a real password
+      PANEL_PASSWORD: "change-me"                    # REQUIRED: pick a real password
       PANEL_PORT: "9099"
+      TZ: Asia/Kolkata                               # your timezone, used for the auto-update hour
+      SELF_CONTAINER: sharetunnel
       NC_CONTAINER: nextcloud
       NC_URL: http://localhost:7580
       DB_CONTAINER: db-nextcloud
