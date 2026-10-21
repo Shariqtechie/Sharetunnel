@@ -1,0 +1,15 @@
+services:
+  sharetunnel:
+    image: ghcr.io/shariqtechie/sharetunnel:edge
+    container_name: sharetunnel
+    network_mode: host          # panel on :9099, reaches Nextcloud on localhost
+    restart: unless-stopped
+    environment:
+      PANEL_PASSWORD: "change-me"   # REQUIRED: pick a real password
+      PANEL_PORT: "9099"
+      NC_CONTAINER: nextcloud
+      NC_URL: http://localhost:7580
+      DB_CONTAINER: db-nextcloud
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /DATA/AppData/sharetunnel:/data

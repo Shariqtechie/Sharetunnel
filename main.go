@@ -1,7 +1,8 @@
-// ShareTunnel - milestone 1: core engine (command line)
+// ShareTunnel - share Nextcloud files with anyone through a temporary Cloudflare link.
 //
-//	sharetunnel run      start tunnel, trust its URL in Nextcloud, list shares
-//	sharetunnel shares   just list public share links
+//	sharetunnel serve    web panel + tunnel manager (default in Docker)
+//	sharetunnel run      command-line mode (no panel)
+//	sharetunnel shares   list public share links
 //	sharetunnel version
 package main
 
@@ -11,26 +12,29 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"os"
 	"os/exec"
 	"os/signal"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"syscall"
-	"time"
 )
 
 var version = "dev"
 
 var urlRe = regexp.MustCompile(`https://[a-z0-9-]+\.trycloudflare\.com`)
 
-// ---------- config (from environment variables) ----------
+// ---------- config (environment variables) ----------
 
 type Config struct {
 	NCContainer  string // Nextcloud container name
 	NCURL        string // where cloudflared reaches Nextcloud
 	DBContainer  string // Postgres container name
 	TrustedIndex string // the trusted_domains slot this app owns
+	PanelPort    string
+	DataDir      string
 }
 
 func getenv(key, def string) string {
@@ -46,7 +50,31 @@ func loadConfig() Config {
 		NCURL:        getenv("NC_URL", "http://localhost:7580"),
 		DBContainer:  getenv("DB_CONTAINER", "db-nextcloud"),
 		TrustedIndex: getenv("TRUSTED_INDEX", "50"),
+		PanelPort:    getenv("PANEL_PORT", "9099"),
+		DataDir:      getenv("DATA_DIR", "/data"),
 	}
+}
+
+// ---------- saved on/off state (survives reboots) ----------
+
+func loadEnabled(cfg Config) bool {
+	b, err := os.ReadFile(filepath.Join(cfg.DataDir, "state.json"))
+	if err != nil {
+		return true // first run: start the tunnel
+	}
+	var s struct {
+		Enabled bool `json:"enabled"`
+	}
+	if json.Unmarshal(b, &s) != nil {
+		return true
+	}
+	return s.Enabled
+}
+
+func saveEnabled(cfg Config, v bool) {
+	os.MkdirAll(cfg.DataDir, 0o755)
+	b, _ := json.Marshal(map[string]any{"enabled": v, "schema": 1})
+	os.WriteFile(filepath.Join(cfg.DataDir, "state.json"), b, 0o644)
 }
 
 // ---------- Nextcloud trusted_domains ----------
@@ -57,8 +85,7 @@ func occ(cfg Config, args ...string) (string, error) {
 	return strings.TrimSpace(string(out)), err
 }
 
-// We always use ONE fixed slot, so the old tunnel URL is replaced
-// instead of piling up in config.php.
+// One fixed slot, so the old tunnel URL is replaced instead of piling up.
 func setTrusted(cfg Config, host string) error {
 	out, err := occ(cfg, "config:system:set", "trusted_domains", cfg.TrustedIndex, "--value="+host)
 	if err != nil {
@@ -85,6 +112,13 @@ type Share struct {
 	HasPW      bool    `json:"has_pw"`
 }
 
+type ShareOut struct {
+	Share
+	Kind     string `json:"kind"`
+	Icon     string `json:"icon"`
+	SizeText string `json:"size_text"`
+}
+
 const sharesSQL = `SELECT COALESCE(json_agg(t ORDER BY t.id DESC), '[]') FROM (
   SELECT s.id, s.token, s.item_type, COALESCE(m.mimetype,'') AS mimetype,
          COALESCE(f.size,0) AS size, s.file_target, s.uid_owner AS owner,
@@ -95,7 +129,7 @@ const sharesSQL = `SELECT COALESCE(json_agg(t ORDER BY t.id DESC), '[]') FROM (
   WHERE s.share_type = 3
 ) t`
 
-func listShares(cfg Config) ([]Share, error) {
+func listShares(cfg Config) ([]ShareOut, error) {
 	cmd := exec.Command("docker", "exec",
 		"-e", "SQL="+sharesSQL,
 		"-e", "PGOPTIONS=-c default_transaction_read_only=on", // read-only, always
@@ -111,10 +145,15 @@ func listShares(cfg Config) ([]Share, error) {
 	if err := json.Unmarshal(bytes.TrimSpace(out), &shares); err != nil {
 		return nil, fmt.Errorf("bad JSON from database: %v", err)
 	}
-	return shares, nil
+	res := make([]ShareOut, 0, len(shares))
+	for _, s := range shares {
+		icon, kind := kindOf(s)
+		res = append(res, ShareOut{Share: s, Kind: kind, Icon: icon, SizeText: humanSize(s.Size)})
+	}
+	return res, nil
 }
 
-func kind(s Share) (icon, label string) {
+func kindOf(s Share) (icon, label string) {
 	switch {
 	case s.ItemType == "folder":
 		return "📁", "folder"
@@ -147,31 +186,16 @@ func printShares(cfg Config, base string) {
 		fmt.Println("Could not read shares:", err)
 		return
 	}
-	if len(shares) == 0 {
-		fmt.Println("No public share links yet.")
-		return
-	}
-	fmt.Printf("\n%d public share link(s):\n", len(shares))
 	for _, s := range shares {
-		icon, label := kind(s)
-		extra := ""
-		if s.HasPW {
-			extra += " 🔒 password"
-		}
-		if s.Expiration != nil {
-			extra += " ⏳ expires " + *s.Expiration
-		}
-		fmt.Printf("%s %s  [%s, %s, owner: %s]%s\n    %s/s/%s\n",
-			icon, strings.TrimPrefix(s.Name, "/"), label, humanSize(s.Size), s.Owner, extra, base, s.Token)
+		fmt.Printf("%s %s [%s, %s, owner: %s]\n    %s/s/%s\n", s.Icon, strings.TrimPrefix(s.Name, "/"), s.Kind, s.SizeText, s.Owner, base, s.Token)
 	}
-	fmt.Println()
 }
 
-// ---------- the tunnel ----------
+// ---------- the tunnel process ----------
 
-// runTunnel starts cloudflared and calls onURL once when the public URL appears.
-// It returns when cloudflared exits.
-func runTunnel(ctx context.Context, cfg Config, onURL func(string)) error {
+// runTunnel starts cloudflared, calls onURL once when the public URL appears,
+// and returns when cloudflared exits.
+func runTunnel(ctx context.Context, cfg Config, logf func(string, ...any), onURL func(string)) error {
 	cmd := exec.CommandContext(ctx, "cloudflared", "tunnel", "--no-autoupdate", "--url", cfg.NCURL)
 	stderr, err := cmd.StderrPipe()
 	if err != nil {
@@ -191,52 +215,59 @@ func runTunnel(ctx context.Context, cfg Config, onURL func(string)) error {
 			}
 		}
 		if strings.Contains(line, " ERR ") || strings.Contains(line, " WRN ") {
-			fmt.Println("[cloudflared]", line)
+			logf("[cloudflared] %s", line)
 		}
 	}
 	return cmd.Wait()
 }
 
+// ---------- commands ----------
+
+func serve(cfg Config) {
+	pw := os.Getenv("PANEL_PASSWORD")
+	if pw == "" || pw == "change-me" {
+		fmt.Println("ERROR: set PANEL_PASSWORD to a real password (not empty, not 'change-me').")
+		os.Exit(1)
+	}
+	m := NewManager(cfg, true)
+	if loadEnabled(cfg) {
+		m.Start()
+	}
+	srv := &http.Server{Addr: ":" + cfg.PanelPort, Handler: NewPanel(cfg, m, pw).routes()}
+
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	go func() {
+		<-ctx.Done()
+		m.Shutdown() // removes the trusted domain, keeps the saved on/off choice
+		srv.Shutdown(context.Background())
+	}()
+
+	m.logf("ShareTunnel %s - panel on port %s", version, cfg.PanelPort)
+	if err := srv.ListenAndServe(); err != http.ErrServerClosed {
+		fmt.Println("ERROR:", err)
+		os.Exit(1)
+	}
+}
+
 func run(cfg Config) {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-
-	fmt.Printf("ShareTunnel %s | Nextcloud container: %s | target: %s\n", version, cfg.NCContainer, cfg.NCURL)
-
-	onURL := func(u string) {
-		host := strings.TrimPrefix(u, "https://")
-		fmt.Println("Tunnel is up:", u)
-		if err := setTrusted(cfg, host); err != nil {
-			fmt.Println("ERROR: could not add trusted domain:", err)
-			return
-		}
-		fmt.Println("Nextcloud now trusts", host)
-		printShares(cfg, u)
-	}
-
-	for ctx.Err() == nil {
-		err := runTunnel(ctx, cfg, onURL)
-		if ctx.Err() != nil {
-			break
-		}
-		fmt.Printf("Tunnel stopped (%v). Restarting in 5s...\n", err)
-		select {
-		case <-ctx.Done():
-		case <-time.After(5 * time.Second):
-		}
-	}
-
-	fmt.Println("Stopping: removing tunnel URL from trusted_domains")
-	clearTrusted(cfg)
+	m := NewManager(cfg, false)
+	m.Start()
+	<-ctx.Done()
+	m.Shutdown()
 }
 
 func main() {
 	cfg := loadConfig()
-	cmd := "run"
+	cmd := "serve"
 	if len(os.Args) > 1 {
 		cmd = os.Args[1]
 	}
 	switch cmd {
+	case "serve":
+		serve(cfg)
 	case "run":
 		run(cfg)
 	case "shares":
@@ -244,7 +275,7 @@ func main() {
 	case "version":
 		fmt.Println(version)
 	default:
-		fmt.Println("usage: sharetunnel [run|shares|version]")
+		fmt.Println("usage: sharetunnel [serve|run|shares|version]")
 		os.Exit(1)
 	}
 }
