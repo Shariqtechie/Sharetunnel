@@ -30,7 +30,7 @@ jobs:
           echo "version=$v" >> "$GITHUB_OUTPUT"
           if [ "$v" = "edge" ]; then echo "release=false" >> "$GITHUB_OUTPUT"; else echo "release=true" >> "$GITHUB_OUTPUT"; fi
 
-      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-qemu-action@v4
 
       - uses: docker/setup-buildx-action@v3
 
