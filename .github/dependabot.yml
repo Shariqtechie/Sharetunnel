@@ -2,10 +2,16 @@ version: 2
 updates:
   - package-ecosystem: github-actions
     directory: /
-    schedule: { interval: weekly }
+    schedule:
+      interval: monthly
+    groups:
+      actions:
+        patterns: ["*"]
   - package-ecosystem: docker
     directory: /
-    schedule: { interval: weekly }
+    schedule:
+      interval: monthly
   - package-ecosystem: gomod
     directory: /
-    schedule: { interval: weekly }
+    schedule:
+      interval: monthly
