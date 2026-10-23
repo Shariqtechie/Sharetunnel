@@ -109,6 +109,7 @@ func (p *Panel) login(w http.ResponseWriter, r *http.Request) {
 	p.sessions[tok] = time.Now().Add(7 * 24 * time.Hour)
 	p.mu.Unlock()
 	http.SetCookie(w, &http.Cookie{Name: "st_session", Value: tok, Path: "/", HttpOnly: true,
+		Secure:   r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https",
 		SameSite: http.SameSiteStrictMode, MaxAge: 7 * 24 * 3600})
 	writeJSON(w, 200, map[string]bool{"ok": true})
 }
@@ -132,6 +133,9 @@ func (p *Panel) routes() http.Handler {
 	}))
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) { // public, used by the updater
 		writeJSON(w, 200, map[string]string{"version": version})
+	})
+	mux.HandleFunc("/api/session", func(w http.ResponseWriter, r *http.Request) { // lets the page ask "am I signed in?" without a 401
+		writeJSON(w, 200, map[string]bool{"authenticated": p.valid(r)})
 	})
 	mux.HandleFunc("/api/login", p.login)
 	mux.HandleFunc("/api/logout", p.logout)
@@ -182,5 +186,17 @@ func (p *Panel) routes() http.Handler {
 		updateSettings(p.cfg, func(s *Settings) { s.UpdateMode, s.AutoHour = body.Mode, body.Hour })
 		writeJSON(w, 200, p.u.Info())
 	}))
-	return mux
+	return secure(mux)
+}
+
+// secure adds standard browser protections to every response.
+func secure(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		h := w.Header()
+		h.Set("Content-Security-Policy", "default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
+		h.Set("X-Content-Type-Options", "nosniff")
+		h.Set("X-Frame-Options", "DENY")
+		h.Set("Referrer-Policy", "no-referrer")
+		next.ServeHTTP(w, r)
+	})
 }

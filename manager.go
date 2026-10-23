@@ -19,12 +19,14 @@ type Manager struct {
 	cancel context.CancelFunc
 	done   chan struct{}
 	logs   []string
+	since  time.Time // when the tunnel last came online
 }
 
 type Snapshot struct {
 	Version string   `json:"version"`
 	Status  string   `json:"status"`
 	URL     string   `json:"url"`
+	Since   int64    `json:"since"` // unix seconds, 0 when offline
 	Logs    []string `json:"logs"`
 }
 
@@ -46,13 +48,24 @@ func (m *Manager) logf(format string, a ...any) {
 func (m *Manager) set(status, url string) {
 	m.mu.Lock()
 	m.status, m.url = status, url
+	if status == "running" {
+		if m.since.IsZero() {
+			m.since = time.Now()
+		}
+	} else {
+		m.since = time.Time{}
+	}
 	m.mu.Unlock()
 }
 
 func (m *Manager) Snapshot() Snapshot {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	return Snapshot{Version: version, Status: m.status, URL: m.url, Logs: append([]string(nil), m.logs...)}
+	var since int64
+	if !m.since.IsZero() {
+		since = m.since.Unix()
+	}
+	return Snapshot{Version: version, Status: m.status, URL: m.url, Since: since, Logs: append([]string(nil), m.logs...)}
 }
 
 func (m *Manager) Start() {
@@ -84,7 +97,7 @@ func (m *Manager) stop(remember bool) {
 	cancel()
 	<-done
 	m.mu.Lock()
-	m.cancel, m.done, m.url, m.status = nil, nil, "", "stopped"
+	m.cancel, m.done, m.url, m.status, m.since = nil, nil, "", "stopped", time.Time{}
 	m.mu.Unlock()
 	if remember && m.persist {
 		updateSettings(m.cfg, func(s *Settings) { s.Enabled = false })
@@ -95,6 +108,10 @@ func (m *Manager) Stop()     { m.stop(true) }  // user pressed Stop
 func (m *Manager) Shutdown() { m.stop(false) } // container is stopping
 
 func (m *Manager) loop(ctx context.Context) {
+	if m.cfg.Demo {
+		m.demoLoop(ctx)
+		return
+	}
 	onURL := func(u string) {
 		if ctx.Err() != nil {
 			return

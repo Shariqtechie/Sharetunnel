@@ -103,6 +103,10 @@ func (u *Updater) fail(msg string) {
 }
 
 func (u *Updater) Check() {
+	if u.cfg.Demo {
+		u.demoCheck()
+		return
+	}
 	req, _ := http.NewRequest("GET", "https://api.github.com/repos/"+u.cfg.Repo+"/releases/latest", nil)
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("User-Agent", "sharetunnel/"+version)
@@ -148,6 +152,9 @@ func (u *Updater) Check() {
 // ---------- applying: start a helper container that swaps us out ----------
 
 func (u *Updater) Apply() error {
+	if u.cfg.Demo {
+		return errors.New("updates are disabled in demo mode")
+	}
 	u.mu.Lock()
 	if u.info.Updating {
 		u.mu.Unlock()

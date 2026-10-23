@@ -1,162 +1,243 @@
-const $ = s => document.querySelector(s);
-const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+"use strict";
+/* ShareTunnel admin panel. Plain JavaScript, no build step, no external requests. */
 
-let state = { url: "", status: "", logs: [] }, upd = {}, lastUrl = null, lastLogs = "", tick = 0, sharesLoaded = false;
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+const NS = "http://www.w3.org/2000/svg";
 
-// ---------- helpers ----------
+// tiny DOM helpers (everything is built with textContent, so file names can never inject HTML)
+function icon(name, cls = "i") {
+  const s = document.createElementNS(NS, "svg"), u = document.createElementNS(NS, "use");
+  s.setAttribute("class", cls); s.setAttribute("aria-hidden", "true"); u.setAttribute("href", "#i-" + name); s.append(u); return s;
+}
+function h(tag, props = {}, ...kids) {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(props)) {
+    if (k === "class") e.className = v; else if (k.startsWith("on")) e[k] = v; else if (v !== false && v != null) e.setAttribute(k, v === true ? "" : v);
+  }
+  for (const c of kids.flat()) if (c != null && c !== false) e.append(c.nodeType ? c : document.createTextNode(c));
+  return e;
+}
+
+// ---------- state ----------
+const S = { status: "", url: "", since: 0, logs: [], version: "" };
+let shares = [], sharesErr = "", sharesLoaded = false, upd = {};
+let filter = "all", sortBy = "new", query = "", logErrOnly = false;
+let tick = 0, lastUrl = null, tableKey = "", logKey = "", toggleKey = "";
+
+const KIND = { folder: { icon: "folder", label: "Folder" }, video: { icon: "film", label: "Video" }, image: { icon: "image", label: "Image" }, audio: { icon: "music", label: "Audio" }, file: { icon: "file", label: "File" } };
+const TITLES = { dashboard: "Dashboard", shares: "Shared links", logs: "Activity log", updates: "Updates" };
+const STATUS = { running: "Online", starting: "Connecting", stopped: "Stopped", error: "Error" };
+
+// ---------- formatting ----------
+function bytes(n) { if (n < 1024) return n + " B"; let u = 0, v = n; while (v >= 1024 && u < 4) { v /= 1024; u++; } return v.toFixed(1) + " " + ["B", "KB", "MB", "GB", "TB"][u]; }
+function dur(sec) { sec = Math.max(0, sec | 0); const d = Math.floor(sec / 86400), hh = Math.floor(sec % 86400 / 3600), m = Math.floor(sec % 3600 / 60); return d ? d + "d " + hh + "h" : hh ? hh + "h " + m + "m" : m ? m + " min" : sec + "s"; }
+function rel(ts) { if (!ts) return "–"; const s = Math.floor(Date.now() / 1000) - ts; if (s < 60) return "just now"; if (s < 3600) return Math.floor(s / 60) + " min ago"; if (s < 86400) return Math.floor(s / 3600) + " h ago"; const d = Math.floor(s / 86400); return d === 1 ? "yesterday" : d + " days ago"; }
+function expiry(iso) {
+  const t = Date.parse(iso); if (isNaN(t)) return { text: iso, cls: "" };
+  const d = Math.ceil((t - Date.now()) / 864e5);
+  if (d < 0) return { text: "Expired", cls: "bad" }; if (d === 0) return { text: "Expires today", cls: "warn" }; if (d === 1) return { text: "Expires tomorrow", cls: "warn" };
+  return { text: "Expires in " + d + " days", cls: d <= 3 ? "warn" : "" };
+}
+const ver = v => /^\d/.test(v || "") ? "v" + v : (v || "–");
+
+// ---------- api / ui helpers ----------
 async function api(path, body) {
-  const r = await fetch(path, { method: body === undefined ? "GET" : "POST",
-    headers: { "Content-Type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body) });
+  const r = await fetch(path, { method: body === undefined ? "GET" : "POST", headers: { "Content-Type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body) });
   if (r.status === 401 && path !== "/api/login") { showLogin(); throw new Error("login"); }
   return r.json();
 }
-function toast(msg, kind = "ok") {
-  const t = el("div", "toast " + kind, msg); $("#toasts").append(t);
+function toast(msg, kind = "") {
+  const t = h("div", { class: "toast " + kind, role: "status" }, icon(kind === "bad" ? "alert" : "check"), msg); $("#toasts").append(t);
   setTimeout(() => { t.classList.add("out"); setTimeout(() => t.remove(), 300); }, 2600);
 }
-function copy(text, btn, label) {
-  const done = () => {
-    toast("Copied ✓"); if (!btn) return;
-    const o = btn.textContent; btn.textContent = "Copied ✓"; btn.classList.add("done");
-    setTimeout(() => { btn.textContent = o; btn.classList.remove("done"); }, 1500);
-  };
+function copy(text, btn) {
+  const done = () => { toast("Copied to clipboard"); if (!btn) return; const o = [...btn.childNodes]; btn.classList.add("done"); btn.replaceChildren(icon("check"), "Copied"); setTimeout(() => { btn.classList.remove("done"); btn.replaceChildren(...o); }, 1400); };
   if (navigator.clipboard && window.isSecureContext) { navigator.clipboard.writeText(text).then(done); return; }
-  const t = el("textarea"); t.value = text; t.style.cssText = "position:fixed;opacity:0";   // this panel runs on plain http
-  document.body.append(t); t.select();
-  try { document.execCommand("copy"); done(); } catch (e) { prompt("Copy this link:", text); }
-  t.remove();
+  const t = h("textarea"); t.value = text; t.style.cssText = "position:fixed;opacity:0"; document.body.append(t); t.select();   // plain-http fallback
+  try { document.execCommand("copy"); done(); } catch (e) { prompt("Copy this link:", text); } t.remove();
 }
-function ago(ts) {
-  if (!ts) return "never";
-  const s = Math.floor(Date.now() / 1000) - ts;
-  if (s < 60) return "just now"; if (s < 3600) return Math.floor(s / 60) + " min ago";
-  if (s < 86400) return Math.floor(s / 3600) + " h ago"; return Math.floor(s / 86400) + " d ago";
-}
-const showLogin = () => { $("#login").classList.remove("hidden"); $("#main").classList.add("hidden"); $("#logout").classList.add("hidden"); };
-const showMain = () => { $("#login").classList.add("hidden"); $("#main").classList.remove("hidden"); $("#logout").classList.remove("hidden"); };
-
-// ---------- tunnel status ----------
-function renderStatus(s) {
-  state = s;
-  $("#ver").textContent = s.version;
-  $("#pill").className = "pill " + s.status;
-  $("#statusText").textContent = { running: "Online", starting: "Starting…", stopped: "Stopped", error: "Error" }[s.status] || s.status;
-  const u = $("#url"); u.textContent = s.url || "none";
-  if (s.url && s.url !== lastUrl) { u.classList.remove("flash"); void u.offsetWidth; u.classList.add("flash"); }
-  $("#copyUrl").disabled = !s.url;
-  const on = s.status !== "stopped", b = $("#toggle");
-  b.textContent = on ? "Stop" : "Start"; b.className = "btn" + (on ? " bad" : "");
-  const joined = s.logs.join("\n");
-  if (joined !== lastLogs) {
-    lastLogs = joined;
-    const pre = $("#logs"), bottom = pre.scrollTop + pre.clientHeight >= pre.scrollHeight - 20;
-    pre.textContent = "";
-    for (const l of s.logs) pre.append(el("div", /ERR|ERROR|failed|ROLLING/.test(l) ? "e" : /is up|trusts|UPDATE OK/.test(l) ? "g" : "", l));
-    if (bottom) pre.scrollTop = pre.scrollHeight;
-  }
-}
-
-// ---------- shares ----------
-function skeleton() { const b = $("#shares"); b.textContent = ""; b.append(el("div", "skel"), el("div", "skel")); }
-async function loadShares() {
-  const d = await api("/api/shares");
-  $("#shareErr").textContent = d.error ? "Could not read shares: " + d.error : "";
-  const box = $("#shares"); box.textContent = "";
-  if (!d.shares.length) { box.append(el("div", "dim", "No public share links yet. Create one in Nextcloud and it shows up here.")); return; }
-  d.shares.forEach((s, i) => {
-    const row = el("div", "share"); row.style.setProperty("--i", i);
-    const mid = el("div", "grow");
-    let meta = s.kind + " · " + s.size_text + " · " + s.owner;
-    if (s.has_pw) meta += " · 🔒 password";
-    if (s.expiration) meta += " · ⏳ expires " + s.expiration;
-    mid.append(el("div", "name", s.file_target.replace(/^\//, "")), el("div", "dim", meta));
-    const btn = el("button", "btn sm", "Copy link"); btn.disabled = !state.url;
-    btn.onclick = () => copy(state.url + "/s/" + s.token, btn);
-    row.append(el("div", "icon", s.icon), mid, btn); box.append(row);
+function ask(title, body, ok) {
+  return new Promise(res => {
+    const d = $("#confirm"); $("#cfTitle").textContent = title; $("#cfBody").textContent = body; $("#cfYes").textContent = ok;
+    const end = v => { d.close(); res(v); };
+    $("#cfYes").onclick = () => end(true); $("#cfNo").onclick = () => end(false); d.oncancel = () => res(false); d.showModal();
   });
 }
 
-// ---------- updates ----------
-function renderUpdate() {
-  $("#curVer").textContent = upd.current || "–";
-  $("#latestVer").textContent = upd.latest || "–";
-  $("#checked").textContent = ago(upd.checked_at);
-  const msg = $("#updMsg");
-  if (upd.error) { msg.className = "msg bad"; msg.textContent = upd.error; }
-  else if (upd.dev) { msg.className = "msg"; msg.textContent = "Development build: automatic updates only apply to official releases."; }
-  else if (upd.checked_at && !upd.available) { msg.className = "msg ok"; msg.textContent = "You're up to date ✓"; }
-  else { msg.className = "msg"; msg.textContent = ""; }
-  $("#banner").classList.toggle("hidden", !upd.available);
-  if (upd.available) {
-    $("#bannerTitle").textContent = "Version " + upd.latest + " is available";
-    $("#bannerSub").textContent = "You have " + upd.current + ". Your tunnel is back about 30 seconds after updating.";
-    $("#notes").textContent = upd.notes || "No release notes.";
+// ---------- theme / routing / login ----------
+function paintTheme() { const dark = document.documentElement.dataset.theme === "dark"; $("#themeBtn use").setAttribute("href", dark ? "#i-sun" : "#i-moon"); $("#themeBtn").setAttribute("aria-label", dark ? "Switch to light theme" : "Switch to dark theme"); }
+function route() {
+  const v = location.hash.replace(/^#\/?/, "") || "dashboard", view = TITLES[v] ? v : "dashboard";
+  $$(".view").forEach(s => s.classList.toggle("hidden", s.id !== "view-" + view));
+  $$(".nav").forEach(a => a.classList.toggle("on", a.dataset.view === view));
+  $("#pageTitle").textContent = TITLES[view]; $("#app").classList.remove("nav-open");
+  if (view === "logs") requestAnimationFrame(() => { const b = $("#logs"); b.scrollTop = b.scrollHeight; });
+}
+function showLogin() { $("#app").classList.add("hidden"); $("#login").classList.remove("hidden"); setTimeout(() => $("#pw").focus(), 50); }
+function showApp() { $("#login").classList.add("hidden"); $("#app").classList.remove("hidden"); route(); }
+
+// ---------- render: tunnel, stats, health ----------
+function renderStatus() {
+  const on = S.status !== "stopped", running = S.status === "running";
+  $("#verChip").textContent = ver(S.version);
+  $("#pill").className = "pill " + S.status; $("#pillText").textContent = STATUS[S.status] || "…";
+  const key = on + "|" + S.status;
+  if (key !== toggleKey) { toggleKey = key; const b = $("#toggle"); b.className = on ? "btn danger" : "btn"; b.setAttribute("aria-label", on ? "Stop tunnel" : "Start tunnel"); b.replaceChildren(icon(on ? "stop" : "play"), h("span", {}, on ? "Stop tunnel" : "Start tunnel")); }
+  const u = $("#heroUrl"); u.textContent = S.url || "Not running"; u.classList.toggle("live", !!S.url);
+  if (S.url && S.url !== lastUrl) { u.classList.remove("flash"); void u.offsetWidth; u.classList.add("flash"); }
+  $("#heroSub").textContent = running ? "Online for " + dur(Date.now() / 1000 - S.since) + ". Your share links use this address." : S.status === "starting" ? "Connecting to Cloudflare…" : S.status === "error" ? "Could not register the address with Nextcloud. See the activity log." : "The tunnel is stopped. Start it to get an address anyone can open.";
+  $("#heroCopy").disabled = !S.url; $("#heroCopy").onclick = e => copy(S.url, e.currentTarget);
+  const o = $("#heroOpen"); o.classList.toggle("disabled", !S.url); if (S.url) o.href = S.url; else o.removeAttribute("href");
+}
+function setStat(id, v, sub, cls = "") { $("#" + id).textContent = v; const s = $("#" + id + "S"); s.textContent = sub || ""; s.className = "stat-s " + cls; }
+function renderStats() {
+  const running = S.status === "running";
+  setStat("stTunnel", STATUS[S.status] || "–", running ? "Up for " + dur(Date.now() / 1000 - S.since) : S.status === "stopped" ? "Not running" : "", running ? "ok" : "");
+  const pw = shares.filter(s => s.has_pw).length;
+  setStat("stLinks", sharesLoaded ? shares.length : "–", sharesLoaded ? pw + " password-protected" : "");
+  setStat("stSize", sharesLoaded ? bytes(shares.reduce((a, s) => a + s.size, 0)) : "–", sharesLoaded ? "across " + shares.length + " item" + (shares.length === 1 ? "" : "s") : "");
+  setStat("stVer", ver(S.version), upd.available ? "Update available" : upd.dev ? "Development build" : upd.checked_at && !upd.error ? "Up to date" : "", upd.available ? "warn" : "ok");
+  $("#navCount").textContent = sharesLoaded && shares.length ? shares.length : "";
+  $("#navUpdate").classList.toggle("hidden", !upd.available);
+}
+function renderHealth() {
+  const st = S.status, short = t => t.length > 70 ? t.slice(0, 70) + "…" : t;
+  const items = [
+    { s: st === "running" ? "ok" : st === "starting" ? "warn" : st === "error" ? "bad" : "idle", t: "Cloudflare tunnel", d: st === "running" ? "Connected" : st === "starting" ? "Connecting…" : st === "error" ? "Failed to register address" : "Stopped" },
+    { s: st === "running" ? "ok" : st === "error" ? "bad" : "idle", t: "Nextcloud access", d: st === "running" ? "Address added to trusted domains" : st === "error" ? "Could not update trusted domains" : "Waiting for the tunnel" },
+    { s: sharesErr ? "bad" : sharesLoaded ? "ok" : "idle", t: "Share database", d: sharesErr ? short(sharesErr) : sharesLoaded ? "Read-only access OK" : "Checking…" },
+    { s: upd.error ? "warn" : upd.available ? "info" : upd.checked_at ? "ok" : "idle", t: "Software updates", d: upd.error ? short(upd.error) : upd.available ? upd.latest + " is available" : upd.dev ? "Development build" : upd.checked_at ? "Up to date" : "Not checked yet" },
+  ];
+  $("#health").replaceChildren(...items.map(i => h("li", { class: i.s }, h("span", { class: "hi" }, icon(i.s === "ok" ? "check" : i.s === "idle" ? "clock" : i.s === "info" ? "download" : "alert")), h("div", {}, h("b", {}, i.t), h("small", {}, i.d)))));
+}
+
+// ---------- render: shares ----------
+function emptyState(none) {
+  return h("div", { class: "empty" }, h("div", { class: "eic" }, icon(none ? "link" : "search")), h("h4", {}, none ? "No public links yet" : "No matches"),
+    h("p", {}, none ? "In Nextcloud, click Share on any file or folder and choose a share link. It shows up here automatically." : "Try a different search or filter."));
+}
+function shareRow(s, n) {
+  const k = KIND[s.kind] || KIND.file, ex = s.expiration ? expiry(s.expiration) : null, link = S.url ? S.url + "/s/" + s.token : "";
+  return h("tr", { style: false, class: "", "data-n": n },
+    h("td", { class: "c-name" }, h("div", { class: "file" }, h("span", { class: "ficon k-" + s.kind }, icon(k.icon)), h("div", {}, h("div", { class: "fname" }, s.file_target.replace(/^\//, "")), h("div", { class: "muted sm" }, "by " + s.owner)))),
+    h("td", { class: "c-type" }, h("span", { class: "badge" }, k.label)),
+    h("td", { class: "c-size num" }, s.size_text),
+    h("td", { class: "c-prot" }, h("div", { class: "badges" }, s.has_pw ? h("span", { class: "badge ok" }, icon("lock"), "Password") : h("span", { class: "badge" }, "No password"), ex && h("span", { class: "badge " + ex.cls }, icon("clock"), ex.text))),
+    h("td", { class: "c-date muted" }, rel(s.created)),
+    h("td", { class: "c-act" }, h("div", { class: "row" },
+      h("button", { class: "btn sm secondary", disabled: !S.url, title: S.url ? "" : "Start the tunnel first", onclick: e => copy(link, e.currentTarget) }, icon("copy"), h("span", { class: "lbl" }, "Copy link")),
+      S.url && h("a", { class: "icon-btn", href: link, target: "_blank", rel: "noopener", "aria-label": "Open link in a new tab" }, icon("ext")))));
+}
+function table(list) {
+  const t = h("table", {}, h("thead", {}, h("tr", {}, h("th", {}, "Name"), h("th", { class: "c-type" }, "Type"), h("th", {}, "Size"), h("th", { class: "c-prot" }, "Protection"), h("th", { class: "c-date" }, "Shared"), h("th", {}, ""))), h("tbody", {}));
+  list.forEach((s, i) => { const r = shareRow(s, i); r.style.setProperty("--n", i); t.tBodies[0].append(r); }); return t;
+}
+function visibleShares() {
+  const a = shares.filter(s => (filter === "all" || s.kind === filter) && (!query || (s.file_target + " " + s.owner).toLowerCase().includes(query)));
+  return a.sort(sortBy === "name" ? (x, y) => x.file_target.localeCompare(y.file_target) : sortBy === "size" ? (x, y) => y.size - x.size : (x, y) => y.created - x.created || y.id - x.id);
+}
+function renderTables() {
+  if (!sharesLoaded) return;
+  const key = JSON.stringify([S.url, shares, filter, sortBy, query]); if (key === tableKey) return; tableKey = key;
+  const list = visibleShares(); $("#shareErr").textContent = sharesErr ? "Could not read shares: " + sharesErr : "";
+  $("#sharesBox").replaceChildren(list.length ? table(list) : emptyState(!shares.length));
+  const recent = [...shares].sort((x, y) => y.created - x.created || y.id - x.id).slice(0, 5);
+  $("#recentBox").replaceChildren(recent.length ? table(recent) : emptyState(true));
+}
+async function loadShares() {
+  const d = await api("/api/shares"); shares = d.shares || []; sharesErr = d.error || ""; sharesLoaded = true; tableKey = ""; renderTables(); renderStats(); renderHealth();
+}
+
+// ---------- render: logs ----------
+function renderLogs() {
+  const lines = S.logs.filter(l => !logErrOnly || /ERR|ERROR|failed|ROLLING|WRN/.test(l)), key = logErrOnly + "|" + lines.join("\n"); if (key === logKey) return; logKey = key;
+  const box = $("#logs"), bottom = box.scrollTop + box.clientHeight >= box.scrollHeight - 30;
+  box.replaceChildren(...lines.map(l => {
+    const m = l.match(/^(\d\d:\d\d:\d\d) (.*)$/), cls = /ERR|ERROR|failed|ROLLING/.test(l) ? "err" : /WRN/.test(l) ? "warn" : /is up|trusts|UPDATE OK|rollback done/.test(l) ? "ok" : "";
+    return h("div", { class: "ln " + cls }, h("time", {}, m ? m[1] : ""), h("span", {}, m ? m[2] : l));
+  }));
+  if (!lines.length) box.append(h("div", { class: "muted" }, "Nothing logged yet."));
+  if (bottom) box.scrollTop = box.scrollHeight;
+}
+
+// ---------- render: updates ----------
+const clean = t => t.replace(/\*\*|__|`/g, "").replace(/\[([^\]]+)\]\([^)]*\)/g, "$1");
+function renderNotes(md) {
+  const box = $("#notes"); box.replaceChildren(); let ul = null;
+  for (const raw of (md || "").split("\n")) {
+    const line = raw.trim(); if (!line) { ul = null; continue; }
+    const li = line.match(/^[*-]\s+(.*)/), hd = line.match(/^#{1,6}\s+(.*)/);
+    if (li) { if (!ul) { ul = h("ul"); box.append(ul); } ul.append(h("li", {}, clean(li[1]))); continue; }
+    ul = null; box.append(hd ? h("h4", {}, clean(hd[1])) : h("p", {}, clean(line)));
   }
-  $("#mode").value = upd.mode || "notify";
-  $("#hourBox").classList.toggle("hidden", upd.mode !== "auto");
-  $("#hour").value = upd.hour;
+  if (!box.children.length) box.append(h("p", {}, md === undefined ? "Check for updates to see the latest release notes." : "No release notes for this version."));
+}
+function renderUpdate() {
+  const u = upd, ic = $("#updIcon");
+  ic.className = "upd-icon" + (u.available ? " avail" : u.error ? " bad" : ""); ic.replaceChildren(icon(u.available ? "download" : u.error ? "alert" : "check"));
+  $("#updTitle").textContent = u.available ? "Version " + u.latest + " is available" : u.error ? "Couldn't check for updates" : u.dev ? "Development build" : u.checked_at ? "You're up to date" : "Not checked yet";
+  $("#updSub").textContent = u.available ? "You have " + ver(u.current) + ". Your tunnel is back about 30 seconds after updating." : u.error ? u.error : u.dev ? "Update checks apply to official releases." : u.checked_at ? ver(u.current) + " is the latest version. Checked " + rel(u.checked_at) + "." : "Press the button to look for a new version.";
+  $("#applyBtn").classList.toggle("hidden", !u.available);
+  const rl = $("#relLink"); rl.classList.toggle("hidden", !u.url); if (u.url) rl.href = u.url;
+  renderNotes(u.latest ? u.notes : undefined);
+  $$("#modes input").forEach(r => r.checked = r.value === u.mode); $("#hourBox").classList.toggle("hidden", u.mode !== "auto"); if (u.hour != null) $("#hour").value = u.hour;
+  renderStats(); renderHealth();
 }
 async function loadUpdate() { upd = await api("/api/update"); renderUpdate(); }
-
 async function checkNow() {
-  const b = $("#checkBtn"); b.disabled = true; b.querySelector(".spin").classList.remove("hidden"); b.querySelector(".lbl").textContent = "Checking…";
-  try {
-    upd = await api("/api/update/check", {}); renderUpdate();
-    toast(upd.error ? "Check failed" : upd.available ? "Update available: " + upd.latest : "You're up to date ✓", upd.error ? "bad" : "ok");
-  } finally { b.disabled = false; b.querySelector(".spin").classList.add("hidden"); b.querySelector(".lbl").textContent = "Check for updates"; }
+  const b = $("#checkBtn"), old = [...b.childNodes]; b.disabled = true; b.replaceChildren(h("span", { class: "spin" }), "Checking…");
+  try { upd = await api("/api/update/check", {}); renderUpdate(); toast(upd.error ? "Check failed" : upd.available ? "Update available: " + upd.latest : "You're up to date", upd.error ? "bad" : ""); }
+  finally { b.disabled = false; b.replaceChildren(...old); }
 }
-
 async function applyNow() {
-  if (!confirm("Update to " + upd.latest + "? The tunnel restarts and the page reloads.")) return;
-  const r = await api("/api/update/apply", {});
-  if (r.error) { toast(r.error, "bad"); return; }
-  $("#overlay").classList.remove("hidden");
-  const old = upd.current, start = Date.now();
-  const timer = setInterval(async () => {
-    try {
-      const h = await (await fetch("/healthz", { cache: "no-store" })).json();
-      if (h.version && h.version !== old) { clearInterval(timer); $("#ovTitle").textContent = "Updated to " + h.version + " ✓"; setTimeout(() => location.reload(), 900); }
-    } catch (e) { /* container is swapping, keep waiting */ }
-    if (Date.now() - start > 150000) { clearInterval(timer); $("#ovTitle").textContent = "Taking longer than expected"; $("#ovSub").textContent = "Your old version may have been restored. Reload the page, or check the log."; }
+  if (!(await ask("Update to " + upd.latest + "?", "The tunnel restarts and this page reloads. If the new version fails to start, the old one is restored automatically.", "Update now"))) return;
+  const r = await api("/api/update/apply", {}); if (r.error) { toast(r.error, "bad"); return; }
+  const dlg = $("#progress"); dlg.oncancel = e => e.preventDefault(); dlg.showModal();
+  const old = upd.current, t0 = Date.now(), timer = setInterval(async () => {
+    try { const j = await (await fetch("/healthz", { cache: "no-store" })).json(); if (j.version && j.version !== old) { clearInterval(timer); $("#pgTitle").textContent = "Updated to " + ver(j.version); setTimeout(() => location.reload(), 900); } } catch (e) { /* swapping containers */ }
+    if (Date.now() - t0 > 150000) { clearInterval(timer); $("#pgTitle").textContent = "Taking longer than expected"; $("#pgSub").textContent = "The old version may have been restored. Reload the page and check the activity log."; }
   }, 2000);
 }
-
 async function saveSettings() {
-  upd = await api("/api/update/settings", { mode: $("#mode").value, hour: +$("#hour").value });
-  renderUpdate(); toast("Saved");
+  const mode = ($("#modes input:checked") || {}).value || "notify"; upd = await api("/api/update/settings", { mode, hour: +$("#hour").value }); renderUpdate(); toast("Preferences saved");
 }
 
 // ---------- boot ----------
+function renderAll() { renderStatus(); renderStats(); renderHealth(); renderLogs(); renderTables(); }
 async function poll() {
+  if (document.hidden) return;
   try {
-    renderStatus(await api("/api/status"));
-    if (!sharesLoaded || state.url !== lastUrl || tick % 7 === 0) { sharesLoaded = true; loadShares(); }
-    lastUrl = state.url;
-    if (tick % 20 === 0) loadUpdate();
-    tick++;
-  } catch (e) {}
+    Object.assign(S, await api("/api/status")); renderAll();
+    if (!sharesLoaded || S.url !== lastUrl || tick % 7 === 0) loadShares();
+    lastUrl = S.url; if (tick % 20 === 0) loadUpdate(); tick++;
+  } catch (e) { /* login screen handles 401 */ }
 }
-
-for (let h = 0; h < 24; h++) $("#hour").append(new Option(String(h).padStart(2, "0") + ":00", h));
-$("#loginBtn").onclick = async () => {
-  const r = await api("/api/login", { password: $("#pw").value });
-  if (r.ok) { $("#loginErr").textContent = ""; $("#pw").value = ""; showMain(); tick = 0; poll(); } else $("#loginErr").textContent = r.error || "Login failed";
-};
-$("#pw").addEventListener("keydown", e => { if (e.key === "Enter") $("#loginBtn").click(); });
-$("#logout").onclick = async () => { await api("/api/logout", {}); showLogin(); };
-$("#copyUrl").onclick = e => copy(state.url, e.currentTarget);
-$("#refresh").onclick = () => { skeleton(); loadShares(); };
-$("#checkBtn").onclick = checkNow;
-$("#applyBtn").onclick = applyNow;
-$("#mode").onchange = saveSettings; $("#hour").onchange = saveSettings;
-$("#toggle").onclick = async e => {
-  const b = e.currentTarget; b.disabled = true;
-  await api(state.status === "stopped" ? "/api/start" : "/api/stop", {});
-  b.disabled = false; poll();
-};
-
+function bind() {
+  for (let i = 0; i < 24; i++) $("#hour").append(new Option(String(i).padStart(2, "0") + ":00", i));
+  $("#filters").replaceChildren(...[["all", "All"], ["folder", "Folders"], ["video", "Videos"], ["image", "Images"], ["audio", "Audio"], ["file", "Files"]].map(([v, l]) => h("button", { class: v === "all" ? "on" : "", "data-f": v, onclick: e => { filter = v; $$("#filters button").forEach(b => b.classList.toggle("on", b === e.currentTarget)); renderTables(); } }, l)));
+  $("#q").oninput = e => { query = e.target.value.trim().toLowerCase(); renderTables(); };
+  $("#sort").onchange = e => { sortBy = e.target.value; renderTables(); };
+  $("#refresh").onclick = async e => { const b = e.currentTarget; b.disabled = true; await loadShares(); b.disabled = false; toast("Share list refreshed"); };
+  $$("#logFilter button").forEach(b => b.onclick = () => { logErrOnly = b.dataset.f === "err"; $$("#logFilter button").forEach(x => x.classList.toggle("on", x === b)); renderLogs(); });
+  $("#logDl").onclick = () => { const a = h("a", { href: URL.createObjectURL(new Blob([S.logs.join("\n") + "\n"], { type: "text/plain" })), download: "sharetunnel.log" }); document.body.append(a); a.click(); a.remove(); };
+  $("#checkBtn").onclick = checkNow; $("#applyBtn").onclick = applyNow;
+  $$("#modes input").forEach(r => r.onchange = saveSettings); $("#hour").onchange = saveSettings;
+  $("#toggle").onclick = async e => { const b = e.currentTarget; b.disabled = true; await api(S.status === "stopped" ? "/api/start" : "/api/stop", {}); b.disabled = false; poll(); };
+  $("#themeBtn").onclick = () => { const t = document.documentElement.dataset.theme === "dark" ? "light" : "dark"; document.documentElement.dataset.theme = t; try { localStorage.setItem("st-theme", t); } catch (e) {} paintTheme(); };
+  $("#menuBtn").onclick = () => $("#app").classList.toggle("nav-open"); $("#scrim").onclick = () => $("#app").classList.remove("nav-open");
+  $("#logout").onclick = async () => { await api("/api/logout", {}); showLogin(); };
+  $("#pwToggle").onclick = () => { const p = $("#pw"); p.type = p.type === "password" ? "text" : "password"; };
+  $("#loginBtn").onclick = async () => {
+    const b = $("#loginBtn"); b.disabled = true; const r = await api("/api/login", { password: $("#pw").value }); b.disabled = false;
+    if (r.ok) { $("#loginErr").textContent = ""; $("#pw").value = ""; tick = 0; showApp(); poll(); } else $("#loginErr").textContent = r.error || "Sign in failed";
+  };
+  $("#pw").addEventListener("keydown", e => { if (e.key === "Enter") $("#loginBtn").click(); });
+  window.addEventListener("hashchange", route); document.addEventListener("visibilitychange", () => { if (!document.hidden) poll(); });
+  setInterval(poll, 3000);
+}
 (async () => {
-  skeleton();
-  try { renderStatus(await api("/api/status")); showMain(); poll(); } catch (e) {}
-  setInterval(() => { if (!$("#main").classList.contains("hidden")) poll(); }, 3000);
+  paintTheme(); bind(); $("#sharesBox").replaceChildren(h("div", { class: "skel" }, ), h("div", { class: "skel" }), h("div", { class: "skel" }));
+  const sess = await api("/api/session");
+  if (sess.authenticated) { showApp(); poll(); } else showLogin();
 })();

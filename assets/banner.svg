@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 340" width="1280" height="340" role="img" aria-label="ShareTunnel">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#0b0e14"/><stop offset="1" stop-color="#141a3b"/></linearGradient>
+    <radialGradient id="glow" cx="82%" cy="-10%" r="75%"><stop offset="0" stop-color="#5b7cfa" stop-opacity=".42"/><stop offset="1" stop-color="#5b7cfa" stop-opacity="0"/></radialGradient>
+    <linearGradient id="lg" x1="8" y1="4" x2="58" y2="62" gradientUnits="userSpaceOnUse"><stop stop-color="#6d8bff"/><stop offset="1" stop-color="#7c4dff"/></linearGradient>
+  </defs>
+  <rect width="1280" height="340" fill="url(#bg)"/><rect width="1280" height="340" fill="url(#glow)"/>
+  <g transform="translate(96 92) scale(2.5)">
+    <rect width="64" height="64" rx="16" fill="url(#lg)"/>
+    <path d="M18 46V32a14 14 0 0 1 28 0v14" stroke="#fff" stroke-width="5" stroke-linecap="round" fill="none"/>
+    <path d="M26 46V33a6 6 0 0 1 12 0v13" stroke="#fff" stroke-opacity=".55" stroke-width="4" stroke-linecap="round" fill="none"/>
+    <path d="M12 46h40" stroke="#fff" stroke-opacity=".35" stroke-width="3" stroke-linecap="round" fill="none"/>
+  </g>
+  <g font-family="system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif">
+    <text x="296" y="158" font-size="76" font-weight="800" fill="#ffffff" letter-spacing="-2">ShareTunnel</text>
+    <text x="298" y="208" font-size="27" fill="#aab4cc">Share your self-hosted Nextcloud files with anyone.</text>
+    <text x="298" y="246" font-size="27" fill="#aab4cc">One click. No domain. No port forwarding.</text>
+    <g transform="translate(298 268)"><rect width="400" height="34" rx="17" fill="#ffffff" fill-opacity=".07" stroke="#ffffff" stroke-opacity=".12"/>
+      <circle cx="20" cy="17" r="5" fill="#2dd4a0"/><text x="36" y="23" font-size="15" fill="#c9d2e6" font-family="ui-monospace,Menlo,Consolas,monospace">https://quiet-river-lake.trycloudflare.com</text></g>
+  </g>
+</svg>

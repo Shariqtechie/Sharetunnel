@@ -37,6 +37,7 @@ type Config struct {
 	DataDir       string
 	Repo          string // GitHub owner/name for update checks
 	SelfContainer string // this container's own name
+	Demo          bool   // DEMO=true: fake data, no Docker or tunnel needed
 }
 
 func getenv(key, def string) string {
@@ -56,6 +57,7 @@ func loadConfig() Config {
 		DataDir:       getenv("DATA_DIR", "/data"),
 		Repo:          getenv("GITHUB_REPO", "Shariqtechie/Sharetunnel"),
 		SelfContainer: getenv("SELF_CONTAINER", "sharetunnel"),
+		Demo:          os.Getenv("DEMO") == "true",
 	}
 }
 
@@ -92,6 +94,7 @@ type Share struct {
 	Owner      string  `json:"owner"`
 	Expiration *string `json:"expiration"`
 	HasPW      bool    `json:"has_pw"`
+	Created    int64   `json:"created"` // unix seconds
 }
 
 type ShareOut struct {
@@ -104,7 +107,7 @@ type ShareOut struct {
 const sharesSQL = `SELECT COALESCE(json_agg(t ORDER BY t.id DESC), '[]') FROM (
   SELECT s.id, s.token, s.item_type, COALESCE(m.mimetype,'') AS mimetype,
          COALESCE(f.size,0) AS size, s.file_target, s.uid_owner AS owner,
-         s.expiration, (s.password IS NOT NULL) AS has_pw
+         s.expiration, (s.password IS NOT NULL) AS has_pw, s.stime AS created
   FROM oc_share s
   LEFT JOIN oc_filecache f ON f.fileid = s.file_source
   LEFT JOIN oc_mimetypes m ON m.id = f.mimetype
@@ -112,6 +115,9 @@ const sharesSQL = `SELECT COALESCE(json_agg(t ORDER BY t.id DESC), '[]') FROM (
 ) t`
 
 func listShares(cfg Config) ([]ShareOut, error) {
+	if cfg.Demo {
+		return demoShares(), nil
+	}
 	cmd := exec.Command("docker", "exec",
 		"-e", "SQL="+sharesSQL,
 		"-e", "PGOPTIONS=-c default_transaction_read_only=on", // read-only, always
@@ -210,6 +216,9 @@ func runTunnel(ctx context.Context, cfg Config, logf func(string, ...any), onURL
 
 func serve(cfg Config) {
 	pw := os.Getenv("PANEL_PASSWORD")
+	if cfg.Demo && pw == "" {
+		pw = "demo"
+	}
 	if pw == "" || pw == "change-me" {
 		fmt.Println("ERROR: set PANEL_PASSWORD to a real password (not empty, not 'change-me').")
 		os.Exit(1)

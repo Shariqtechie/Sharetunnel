@@ -1,0 +1,44 @@
+name: Bug report
+description: Something is not working
+labels: [bug]
+body:
+  - type: input
+    id: version
+    attributes:
+      label: ShareTunnel version
+      description: "Shown at the bottom of the panel's sidebar, for example v0.2.0"
+      placeholder: v0.2.0
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: How did you install it?
+      options:
+        - Docker Compose
+        - docker run
+        - CasaOS custom app
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: setup
+    attributes:
+      label: Nextcloud setup
+      description: "Nextcloud version, how it is installed (AIO, Big Bear, plain Docker) and the database type"
+      placeholder: "Nextcloud 31, Big Bear on CasaOS, PostgreSQL"
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: "What did you expect, and what did you see instead?"
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Activity log
+      description: "Panel, Activity log, Download. Remove anything private before pasting."
+      render: text

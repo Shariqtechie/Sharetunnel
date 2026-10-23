@@ -1,102 +1,194 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark light">
   <title>ShareTunnel</title>
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E🌐%3C/text%3E%3C/svg%3E">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="css/style.css">
+  <script src="js/theme.js"></script>
 </head>
 <body>
-<div class="bg"></div>
-<main class="wrap">
+<svg class="sprite" width="0" height="0" aria-hidden="true" focusable="false"><defs>
+    <symbol id="i-home" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></symbol>
+    <symbol id="i-link" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></symbol>
+    <symbol id="i-terminal" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></symbol>
+    <symbol id="i-cloud" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="8 17 12 21 16 17"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.88 18.09A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.29"/></symbol>
+    <symbol id="i-copy" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></symbol>
+    <symbol id="i-ext" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></symbol>
+    <symbol id="i-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></symbol>
+    <symbol id="i-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></symbol>
+    <symbol id="i-logout" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></symbol>
+    <symbol id="i-play" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></symbol>
+    <symbol id="i-stop" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2" ry="2"/></symbol>
+    <symbol id="i-refresh" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></symbol>
+    <symbol id="i-alert" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></symbol>
+    <symbol id="i-lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></symbol>
+    <symbol id="i-folder" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></symbol>
+    <symbol id="i-film" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"/><line x1="7" y1="2" x2="7" y2="22"/><line x1="17" y1="2" x2="17" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="2" y1="7" x2="7" y2="7"/><line x1="2" y1="17" x2="7" y2="17"/><line x1="17" y1="17" x2="22" y2="17"/><line x1="17" y1="7" x2="22" y2="7"/></symbol>
+    <symbol id="i-image" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></symbol>
+    <symbol id="i-music" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></symbol>
+    <symbol id="i-file" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></symbol>
+    <symbol id="i-menu" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></symbol>
+    <symbol id="i-star" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></symbol>
+    <symbol id="i-globe" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></symbol>
+    <symbol id="i-database" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></symbol>
+    <symbol id="i-download" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></symbol>
+    <symbol id="i-hdd" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="12" x2="2" y2="12"/><path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/><line x1="6" y1="16" x2="6.01" y2="16"/><line x1="10" y1="16" x2="10.01" y2="16"/></symbol>
+    <symbol id="i-eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></symbol>
+</defs></svg>
 
-  <header class="top">
-    <div class="brand">
-      <div class="logo">🌐</div>
-      <div><h1>ShareTunnel</h1><span class="ver" id="ver"></span></div>
+<!-- ============ LOGIN ============ -->
+<main id="login" class="login hidden">
+  <div class="login-card">
+    <img src="img/logo.svg" alt="" class="login-logo" width="56" height="56">
+    <h1>ShareTunnel</h1>
+    <p class="muted">Sign in to manage your public share links.</p>
+    <label class="field-label" for="pw">Password</label>
+    <div class="pw-wrap">
+      <input id="pw" type="password" placeholder="Panel password" autocomplete="current-password">
+      <button class="icon-btn" id="pwToggle" type="button" aria-label="Show password"><svg class="i"><use href="#i-eye"/></svg></button>
     </div>
-    <button class="btn ghost sm hidden" id="logout">Log out</button>
-  </header>
-
-  <section id="login" class="card hidden">
-    <h2>Log in</h2>
-    <div class="row">
-      <input id="pw" class="grow" type="password" placeholder="Panel password" autocomplete="current-password">
-      <button class="btn" id="loginBtn">Log in</button>
-    </div>
-    <div class="msg bad" id="loginErr"></div>
-  </section>
-
-  <div id="main" class="hidden">
-
-    <section id="banner" class="banner hidden">
-      <div class="banner-head">
-        <div class="banner-icon">🚀</div>
-        <div class="grow">
-          <strong id="bannerTitle">Update available</strong>
-          <div class="dim" id="bannerSub"></div>
-        </div>
-        <button class="btn" id="applyBtn">Update now</button>
-      </div>
-      <details><summary>What's new</summary><pre id="notes"></pre></details>
-    </section>
-
-    <section class="card hero">
-      <div class="row between">
-        <span class="pill" id="pill"><span class="dot"></span><span id="statusText">…</span></span>
-        <button class="btn" id="toggle">…</button>
-      </div>
-      <div class="label">Public address</div>
-      <div class="row">
-        <div class="url grow" id="url">none</div>
-        <button class="btn" id="copyUrl" disabled>Copy</button>
-      </div>
-    </section>
-
-    <section class="card">
-      <div class="row between">
-        <h2>Shared from Nextcloud</h2>
-        <button class="btn ghost sm" id="refresh">Refresh</button>
-      </div>
-      <div id="shares"></div>
-      <div class="msg bad" id="shareErr"></div>
-    </section>
-
-    <section class="card">
-      <div class="row between">
-        <h2>Updates</h2>
-        <button class="btn ghost sm" id="checkBtn"><span class="spin hidden"></span><span class="lbl">Check for updates</span></button>
-      </div>
-      <div class="kv">
-        <div><span class="dim">Installed</span><b id="curVer">–</b></div>
-        <div><span class="dim">Latest</span><b id="latestVer">–</b></div>
-        <div><span class="dim">Last checked</span><b id="checked">never</b></div>
-      </div>
-      <div class="msg" id="updMsg"></div>
-      <div class="row settings">
-        <label class="dim" for="mode">When a new version is out</label>
-        <select id="mode">
-          <option value="notify">Just tell me</option>
-          <option value="auto">Update automatically</option>
-          <option value="off">Don't check</option>
-        </select>
-        <span id="hourBox" class="hidden row"><span class="dim">at</span><select id="hour"></select></span>
-      </div>
-    </section>
-
-    <section class="card">
-      <h2>Log</h2>
-      <pre id="logs" class="logs"></pre>
-    </section>
+    <div class="form-error" id="loginErr" role="alert"></div>
+    <button class="btn block" id="loginBtn">Sign in</button>
   </div>
 </main>
 
-<div id="toasts"></div>
-<div id="overlay" class="overlay hidden">
-  <div class="overlay-box"><div class="spin big"></div><strong id="ovTitle">Updating…</strong><div class="dim" id="ovSub">This takes about a minute. The page reloads by itself.</div></div>
+<!-- ============ APP ============ -->
+<div id="app" class="app hidden">
+  <div class="scrim" id="scrim"></div>
+
+  <aside class="sidebar" id="sidebar">
+    <a class="brand" href="#/dashboard"><img src="img/logo.svg" alt="" width="34" height="34"><span>ShareTunnel</span></a>
+    <nav aria-label="Main">
+      <a class="nav" href="#/dashboard" data-view="dashboard"><svg class="i"><use href="#i-home"/></svg>Dashboard</a>
+      <a class="nav" href="#/shares" data-view="shares"><svg class="i"><use href="#i-link"/></svg>Shared links<span class="count" id="navCount"></span></a>
+      <a class="nav" href="#/logs" data-view="logs"><svg class="i"><use href="#i-terminal"/></svg>Activity log</a>
+      <a class="nav" href="#/updates" data-view="updates"><svg class="i"><use href="#i-cloud"/></svg>Updates<span class="dot-badge hidden" id="navUpdate"></span></a>
+    </nav>
+    <div class="side-foot">
+      <a class="side-link" id="starLink" href="https://github.com/Shariqtechie/Sharetunnel" target="_blank" rel="noopener"><svg class="i"><use href="#i-star"/></svg>Star on GitHub</a>
+      <div class="side-row">
+        <span class="chip" id="verChip">v–</span>
+        <span class="spacer"></span>
+        <button class="icon-btn" id="themeBtn" aria-label="Toggle theme"><svg class="i"><use href="#i-sun"/></svg></button>
+        <button class="icon-btn" id="logout" aria-label="Sign out"><svg class="i"><use href="#i-logout"/></svg></button>
+      </div>
+    </div>
+  </aside>
+
+  <div class="main">
+    <header class="topbar">
+      <button class="icon-btn menu-btn" id="menuBtn" aria-label="Open menu"><svg class="i"><use href="#i-menu"/></svg></button>
+      <h2 id="pageTitle">Dashboard</h2>
+      <span class="spacer"></span>
+      <span class="pill" id="pill"><span class="dot"></span><span id="pillText">Connecting</span></span>
+      <button class="btn" id="toggle"><svg class="i"><use href="#i-play"/></svg><span>Start</span></button>
+    </header>
+
+    <div class="content">
+
+      <!-- Dashboard -->
+      <section class="view" id="view-dashboard">
+        <div class="card hero">
+          <div class="hero-main">
+            <div class="eyebrow">Public address</div>
+            <div class="hero-url" id="heroUrl">Not running</div>
+            <div class="muted" id="heroSub">Start the tunnel to get an address anyone can open.</div>
+          </div>
+          <div class="hero-actions">
+            <button class="btn" id="heroCopy" disabled><svg class="i"><use href="#i-copy"/></svg>Copy address</button>
+            <a class="btn secondary disabled" id="heroOpen" target="_blank" rel="noopener"><svg class="i"><use href="#i-ext"/></svg>Open</a>
+          </div>
+        </div>
+
+        <div class="stats">
+          <div class="card stat"><div class="stat-ic ic-blue"><svg class="i"><use href="#i-globe"/></svg></div><div><div class="stat-k">Tunnel</div><div class="stat-v" id="stTunnel">–</div><div class="stat-s" id="stTunnelS"></div></div></div>
+          <div class="card stat"><div class="stat-ic ic-violet"><svg class="i"><use href="#i-link"/></svg></div><div><div class="stat-k">Public links</div><div class="stat-v" id="stLinks">–</div><div class="stat-s" id="stLinksS"></div></div></div>
+          <div class="card stat"><div class="stat-ic ic-teal"><svg class="i"><use href="#i-hdd"/></svg></div><div><div class="stat-k">Data shared</div><div class="stat-v" id="stSize">–</div><div class="stat-s" id="stSizeS"></div></div></div>
+          <div class="card stat"><div class="stat-ic ic-amber"><svg class="i"><use href="#i-cloud"/></svg></div><div><div class="stat-k">Version</div><div class="stat-v" id="stVer">–</div><div class="stat-s" id="stVerS"></div></div></div>
+        </div>
+
+        <div class="grid2">
+          <div class="card">
+            <div class="card-head"><h3>Recent links</h3><a class="link" href="#/shares">View all</a></div>
+            <div class="tablewrap compact" id="recentBox"></div>
+          </div>
+          <div class="card">
+            <div class="card-head"><h3>System health</h3></div>
+            <ul class="health" id="health"></ul>
+          </div>
+        </div>
+      </section>
+
+      <!-- Shared links -->
+      <section class="view hidden" id="view-shares">
+        <div class="toolbar">
+          <div class="search"><svg class="i"><use href="#i-search"/></svg><input id="q" type="search" placeholder="Search by name or owner" aria-label="Search shares"></div>
+          <div class="seg" id="filters" role="group" aria-label="Filter by type"></div>
+          <select id="sort" aria-label="Sort"><option value="new">Newest first</option><option value="name">Name</option><option value="size">Largest first</option></select>
+          <button class="btn secondary" id="refresh"><svg class="i"><use href="#i-refresh"/></svg>Refresh</button>
+        </div>
+        <div class="card flush"><div class="tablewrap" id="sharesBox"></div></div>
+        <div class="form-error" id="shareErr" role="alert"></div>
+      </section>
+
+      <!-- Logs -->
+      <section class="view hidden" id="view-logs">
+        <div class="toolbar">
+          <div class="seg" id="logFilter" role="group" aria-label="Log filter"><button class="on" data-f="all">All</button><button data-f="err">Errors</button></div>
+          <span class="spacer"></span>
+          <button class="btn secondary" id="logDl"><svg class="i"><use href="#i-download"/></svg>Download</button>
+        </div>
+        <div class="card flush"><div class="console" id="logs" role="log" aria-live="polite"></div></div>
+      </section>
+
+      <!-- Updates -->
+      <section class="view hidden" id="view-updates">
+        <div class="card upd-status">
+          <div class="upd-icon" id="updIcon"><svg class="i"><use href="#i-check"/></svg></div>
+          <div class="grow">
+            <h3 id="updTitle">Checking…</h3>
+            <div class="muted" id="updSub"></div>
+          </div>
+          <div class="row">
+            <button class="btn secondary" id="checkBtn"><svg class="i"><use href="#i-refresh"/></svg><span>Check for updates</span></button>
+            <button class="btn hidden" id="applyBtn"><svg class="i"><use href="#i-download"/></svg>Update now</button>
+          </div>
+        </div>
+        <div class="grid2">
+          <div class="card"><div class="card-head"><h3>Release notes</h3><a class="link hidden" id="relLink" target="_blank" rel="noopener">Open on GitHub</a></div><div class="notes" id="notes"></div></div>
+          <div class="card">
+            <div class="card-head"><h3>Update preferences</h3></div>
+            <div class="radios" id="modes">
+              <label class="radio"><input type="radio" name="mode" value="notify"><span><b>Notify me</b><small>Show a banner when a new version is out. You decide when to install.</small></span></label>
+              <label class="radio"><input type="radio" name="mode" value="auto"><span><b>Update automatically</b><small>Install new versions by itself. Failed updates roll back.</small></span></label>
+              <label class="radio"><input type="radio" name="mode" value="off"><span><b>Don't check</b><small>Never contact GitHub for updates.</small></span></label>
+            </div>
+            <div class="row hour hidden" id="hourBox"><label for="hour" class="muted">Install at</label><select id="hour"></select><span class="muted sm">(server time zone)</span></div>
+          </div>
+        </div>
+      </section>
+
+    </div>
+  </div>
 </div>
 
+<!-- Dialogs -->
+<dialog id="confirm" class="dlg">
+  <h3 id="cfTitle"></h3><p class="muted" id="cfBody"></p>
+  <div class="dlg-actions"><button class="btn secondary" id="cfNo">Cancel</button><button class="btn" id="cfYes">Confirm</button></div>
+</dialog>
+<dialog id="progress" class="dlg center">
+  <div class="spin big"></div><h3 id="pgTitle">Updating…</h3><p class="muted" id="pgSub">This takes about a minute. The page reloads by itself.</p>
+</dialog>
+
+<div id="toasts" aria-live="polite"></div>
 <script src="js/app.js"></script>
 </body>
 </html>
