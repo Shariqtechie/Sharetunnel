@@ -73,6 +73,7 @@ type UpdateInfo struct {
 	Mode      string `json:"mode"`
 	Hour      int    `json:"hour"`
 	Updating  bool   `json:"updating"`
+	Managed   bool   `json:"managed"` // an app store (CasaOS) handles updates
 }
 
 type Updater struct {
@@ -93,6 +94,7 @@ func (u *Updater) Info() UpdateInfo {
 	_, ok := parseVer(version)
 	i.Dev = !ok
 	i.Mode, i.Hour = s.UpdateMode, s.AutoHour
+	i.Managed = u.cfg.Managed
 	return i
 }
 
@@ -155,6 +157,9 @@ func (u *Updater) Apply() error {
 	if u.cfg.Demo {
 		return errors.New("updates are disabled in demo mode")
 	}
+	if u.cfg.Managed {
+		return errors.New("updates are managed by your app store (CasaOS). Use Update in the app's menu there")
+	}
 	u.mu.Lock()
 	if u.info.Updating {
 		u.mu.Unlock()
@@ -210,7 +215,7 @@ func (u *Updater) loop(ctx context.Context) {
 				u.Check()
 			}
 			info := u.Info()
-			if s.UpdateMode == "auto" && info.Available && time.Now().Hour() == s.AutoHour && s.AutoTried != info.Latest {
+			if s.UpdateMode == "auto" && !u.cfg.Managed && info.Available && time.Now().Hour() == s.AutoHour && s.AutoTried != info.Latest {
 				updateSettings(u.cfg, func(s *Settings) { s.AutoTried = info.Latest }) // never retry the same version automatically
 				u.m.logf("Auto-update to %s", info.Latest)
 				if err := u.Apply(); err != nil {

@@ -5,7 +5,7 @@ services:
     network_mode: host                               # panel on :9099, reaches Nextcloud on localhost
     restart: unless-stopped
     environment:
-      PANEL_PASSWORD: "change-me"                    # REQUIRED: pick a real password
+      # PANEL_PASSWORD: "pick-one"                    # optional: leave out and the panel asks you to create one on first open
       PANEL_PORT: "9099"
       TZ: Asia/Kolkata                               # your timezone, used for the auto-update hour
       SELF_CONTAINER: sharetunnel

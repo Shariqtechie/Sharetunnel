@@ -49,14 +49,51 @@
   <div class="login-card">
     <img src="img/logo.svg" alt="" class="login-logo" width="56" height="56">
     <h1>ShareTunnel</h1>
-    <p class="muted">Sign in to manage your public share links.</p>
-    <label class="field-label" for="pw">Password</label>
-    <div class="pw-wrap">
-      <input id="pw" type="password" placeholder="Panel password" autocomplete="current-password">
-      <button class="icon-btn" id="pwToggle" type="button" aria-label="Show password"><svg class="i"><use href="#i-eye"/></svg></button>
+
+    <!-- sign in -->
+    <div id="signinBox">
+      <p class="muted">Sign in to manage your public share links.</p>
+      <label class="field-label" for="pw">Password</label>
+      <div class="pw-wrap">
+        <input id="pw" type="password" placeholder="Panel password" autocomplete="current-password">
+        <button class="icon-btn" id="pwToggle" type="button" aria-label="Show password"><svg class="i"><use href="#i-eye"/></svg></button>
+      </div>
+      <div class="form-error" id="loginErr" role="alert"></div>
+      <button class="btn block" id="loginBtn">Sign in</button>
+      <button class="link-btn" id="forgotLink" type="button">Forgot your password?</button>
+      <div class="forgot hidden" id="forgot">
+        <b>How to get back in</b>
+        <div id="forgotFile">
+          <ol>
+            <li>Open ShareTunnel's data folder (the one mounted at <code>/data</code>; on CasaOS: Files, then AppData, sharetunnel, data) and delete the file <code>auth.json</code>.</li>
+            <li>Reload this page and create a new password.</li>
+          </ol>
+          <div class="muted sm">Your settings and shared links are not touched. Or run this on the server to get a new random password:</div>
+          <div class="cmdline"><code id="cmdReset">docker exec sharetunnel sharetunnel reset-password</code><button class="icon-btn" id="cmdResetCopy" type="button" aria-label="Copy command"><svg class="i"><use href="#i-copy"/></svg></button></div>
+        </div>
+        <div id="forgotEnv" class="hidden">This password is set by the <code>PANEL_PASSWORD</code> setting. Change it there and recreate the container.</div>
+      </div>
     </div>
-    <div class="form-error" id="loginErr" role="alert"></div>
-    <button class="btn block" id="loginBtn">Sign in</button>
+
+    <!-- first run: create the password -->
+    <div id="setupBox" class="hidden">
+      <p class="muted">Welcome! Create a password to protect your panel. You will use it every time you sign in.</p>
+      <label class="field-label" for="npw1">Choose a password</label>
+      <div class="pw-wrap">
+        <input id="npw1" type="password" placeholder="At least 8 characters" autocomplete="new-password">
+        <button class="icon-btn" id="npwToggle" type="button" aria-label="Show password"><svg class="i"><use href="#i-eye"/></svg></button>
+      </div>
+      <label class="field-label tight" for="npw2">Type it again</label>
+      <div class="pw-wrap"><input id="npw2" type="password" autocomplete="new-password"></div>
+      <div class="form-error" id="setupErr" role="alert"></div>
+      <button class="btn block" id="setupBtn">Create password</button>
+    </div>
+
+    <!-- first run, but not from the home network -->
+    <div id="setupBlocked" class="hidden">
+      <p><b>This ShareTunnel has no password yet.</b></p>
+      <p class="muted">For safety, the first password can only be created from a device on your home network. Open this page from a phone or computer on the same Wi-Fi as your server.</p>
+    </div>
   </div>
 </main>
 
@@ -186,6 +223,20 @@
             </div>
           </div>
         </div>
+        <div class="card setup-form pw-card" id="pwCard">
+          <div class="card-head"><h3>Panel password</h3></div>
+          <p class="muted sm" id="pwNote">Change the password you use to sign in. Anyone else who is signed in will be signed out.</p>
+          <div id="pwFields">
+            <label class="field-label" for="pwCur">Current password</label>
+            <input id="pwCur" type="password" autocomplete="current-password">
+            <label class="field-label" for="pwNew">New password (at least 8 characters)</label>
+            <input id="pwNew" type="password" autocomplete="new-password">
+            <label class="field-label" for="pwNew2">Type the new password again</label>
+            <input id="pwNew2" type="password" autocomplete="new-password">
+            <div class="form-error" id="pwErr" role="alert"></div>
+            <button class="btn" id="pwSave">Change password</button>
+          </div>
+        </div>
       </section>
 
       <!-- Updates -->
@@ -203,7 +254,7 @@
         </div>
         <div class="grid2">
           <div class="card"><div class="card-head"><h3>Release notes</h3><a class="link hidden" id="relLink" target="_blank" rel="noopener">Open on GitHub</a></div><div class="notes" id="notes"></div></div>
-          <div class="card">
+          <div class="card" id="prefsCard">
             <div class="card-head"><h3>Update preferences</h3></div>
             <div class="radios" id="modes">
               <label class="radio"><input type="radio" name="mode" value="notify"><span><b>Notify me</b><small>Show a banner when a new version is out. You decide when to install.</small></span></label>

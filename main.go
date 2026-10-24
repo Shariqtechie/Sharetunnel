@@ -41,6 +41,7 @@ type Config struct {
 	TrustedIndex  string // the trusted_domains slot this app owns
 	PanelPort     string
 	DataDir       string
+	Managed       bool   // UPDATE_MODE=managed: an app store (CasaOS) updates this app, not the built-in updater
 	Repo          string // GitHub owner/name for update checks
 	SelfContainer string // this container's own name
 	Demo          bool   // DEMO=true: fake data, no Docker or tunnel needed
@@ -61,6 +62,7 @@ func loadConfig() Config {
 		TrustedIndex:  getenv("TRUSTED_INDEX", "50"),
 		PanelPort:     getenv("PANEL_PORT", "9099"),
 		DataDir:       getenv("DATA_DIR", "/data"),
+		Managed:       os.Getenv("UPDATE_MODE") == "managed",
 		Repo:          getenv("GITHUB_REPO", "Shariqtechie/Sharetunnel"),
 		SelfContainer: getenv("SELF_CONTAINER", "sharetunnel"),
 		Demo:          os.Getenv("DEMO") == "true",
@@ -228,15 +230,9 @@ func runTunnel(ctx context.Context, cfg Config, logf func(string, ...any), onURL
 // ---------- commands ----------
 
 func serve(cfg Config) {
-	pw := os.Getenv("PANEL_PASSWORD")
+	pw := os.Getenv("PANEL_PASSWORD") // optional: without it, the panel asks for a password on first open
 	if cfg.Demo && pw == "" {
 		pw = "demo"
-	}
-	if pw == "" || pw == "change-me" {
-		fmt.Println("ShareTunnel can't start yet: no panel password is set.")
-		fmt.Println("Add a real password (not empty, not 'change-me') and start it again, for example:")
-		fmt.Println("    docker run ... -e PANEL_PASSWORD=pick-something-long ...")
-		os.Exit(1)
 	}
 	if n, err := strconv.Atoi(cfg.PanelPort); err != nil || n < 1 || n > 65535 {
 		fmt.Printf("ShareTunnel can't start: PANEL_PORT=%q is not a valid port. Use a number from 1 to 65535, for example 9099.\n", cfg.PanelPort)
@@ -270,6 +266,12 @@ func serve(cfg Config) {
 	go logSetupProblems(ctx, cfg, m)
 
 	m.logf("ShareTunnel %s - panel on port %s", version, cfg.PanelPort)
+	switch NewAuth(cfg, pw).Mode() {
+	case "setup":
+		m.logf("No password yet. Open the panel from a device on your home network to create one: http://<this-server>:%s", cfg.PanelPort)
+	case "env":
+		m.logf("Panel password is set by PANEL_PASSWORD")
+	}
 	if err := srv.Serve(ln); err != http.ErrServerClosed {
 		fmt.Println("ERROR:", err)
 		os.Exit(1)
@@ -308,6 +310,8 @@ func main() {
 		serve(cfg)
 	case "run":
 		run(cfg)
+	case "reset-password":
+		resetPassword(cfg)
 	case "doctor":
 		if !printDoctor(cfg) {
 			os.Exit(1)
@@ -319,7 +323,7 @@ func main() {
 	case "version":
 		fmt.Println(version)
 	default:
-		fmt.Println("usage: sharetunnel [serve|run|shares|doctor|version]")
+		fmt.Println("usage: sharetunnel [serve|run|shares|doctor|reset-password|version]")
 		os.Exit(1)
 	}
 }

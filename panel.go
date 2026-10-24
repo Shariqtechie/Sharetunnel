@@ -3,10 +3,10 @@ package main
 import (
 	"context"
 	"crypto/rand"
-	"crypto/subtle"
 	"embed"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"io/fs"
 	"net/http"
 	"sync"
@@ -17,13 +17,13 @@ import (
 var webFS embed.FS
 
 type Panel struct {
-	cfg      Config
-	m        *Manager
-	u        *Updater
-	password string
+	cfg   Config
+	m     *Manager
+	u     *Updater
+	creds *Auth
 
 	mu       sync.Mutex
-	sessions map[string]time.Time
+	sessions map[string]session
 	fails    []time.Time
 
 	repMu sync.Mutex // guards the cached setup report
@@ -31,8 +31,15 @@ type Panel struct {
 	repAt time.Time
 }
 
-func NewPanel(cfg Config, m *Manager, u *Updater, password string) *Panel {
-	return &Panel{cfg: cfg, m: m, u: u, password: password, sessions: map[string]time.Time{}}
+// A session remembers which password it was created under, so changing or
+// resetting the password signs everyone out.
+type session struct {
+	exp time.Time
+	fp  string
+}
+
+func NewPanel(cfg Config, m *Manager, u *Updater, envPassword string) *Panel {
+	return &Panel{cfg: cfg, m: m, u: u, creds: NewAuth(cfg, envPassword), sessions: map[string]session{}}
 }
 
 func writeJSON(w http.ResponseWriter, code int, v any) {
@@ -47,14 +54,28 @@ func (p *Panel) valid(r *http.Request) bool {
 	if err != nil {
 		return false
 	}
+	fp := p.creds.Fingerprint()
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	exp, ok := p.sessions[c.Value]
-	if ok && time.Now().After(exp) {
+	ss, ok := p.sessions[c.Value]
+	if ok && (fp == "" || ss.fp != fp || time.Now().After(ss.exp)) {
 		delete(p.sessions, c.Value)
 		return false
 	}
 	return ok
+}
+
+// startSession signs the browser in.
+func (p *Panel) startSession(w http.ResponseWriter, r *http.Request) {
+	b := make([]byte, 32)
+	rand.Read(b)
+	tok := hex.EncodeToString(b)
+	p.mu.Lock()
+	p.sessions[tok] = session{exp: time.Now().Add(7 * 24 * time.Hour), fp: p.creds.Fingerprint()}
+	p.mu.Unlock()
+	http.SetCookie(w, &http.Cookie{Name: "st_session", Value: tok, Path: "/", HttpOnly: true,
+		Secure:   r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https",
+		SameSite: http.SameSiteStrictMode, MaxAge: 7 * 24 * 3600})
 }
 
 // auth = must be logged in. post = must also be a POST.
@@ -104,6 +125,10 @@ func (p *Panel) login(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 405, map[string]string{"error": "POST only"})
 		return
 	}
+	if p.creds.Mode() == "setup" {
+		writeJSON(w, 409, map[string]string{"error": "setup_required"})
+		return
+	}
 	if p.locked() {
 		writeJSON(w, 429, map[string]string{"error": "too many wrong passwords, wait a minute"})
 		return
@@ -112,23 +137,85 @@ func (p *Panel) login(w http.ResponseWriter, r *http.Request) {
 		Password string `json:"password"`
 	}
 	json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<10)).Decode(&body)
-	if subtle.ConstantTimeCompare([]byte(body.Password), []byte(p.password)) != 1 {
+	if !p.creds.Check(body.Password) {
 		p.mu.Lock()
 		p.fails = append(p.fails, time.Now())
 		p.mu.Unlock()
 		time.Sleep(time.Second)
-		writeJSON(w, 401, map[string]string{"error": "wrong password"})
+		writeJSON(w, 401, map[string]string{"error": "Wrong password"})
 		return
 	}
-	b := make([]byte, 32)
-	rand.Read(b)
-	tok := hex.EncodeToString(b)
-	p.mu.Lock()
-	p.sessions[tok] = time.Now().Add(7 * 24 * time.Hour)
-	p.mu.Unlock()
-	http.SetCookie(w, &http.Cookie{Name: "st_session", Value: tok, Path: "/", HttpOnly: true,
-		Secure:   r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https",
-		SameSite: http.SameSiteStrictMode, MaxAge: 7 * 24 * 3600})
+	p.startSession(w, r)
+	writeJSON(w, 200, map[string]bool{"ok": true})
+}
+
+// setup creates the very first password. Only possible while none exists, and
+// only from the local network.
+func (p *Panel) setup(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeJSON(w, 405, map[string]string{"error": "POST only"})
+		return
+	}
+	if p.creds.Mode() != "setup" {
+		writeJSON(w, 409, map[string]string{"error": "A password is already set. Sign in instead."})
+		return
+	}
+	if !privateClient(r) {
+		writeJSON(w, 403, map[string]string{"error": "For safety, the first password can only be created from a device on your home network, not through the internet or a proxy."})
+		return
+	}
+	var body struct {
+		Password string `json:"password"`
+	}
+	json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<10)).Decode(&body)
+	if err := ValidatePassword(body.Password); err != nil {
+		writeJSON(w, 400, map[string]string{"error": err.Error()})
+		return
+	}
+	if err := p.creds.SetFirst(body.Password); err != nil {
+		if errors.Is(err, errAlreadySetUp) {
+			writeJSON(w, 409, map[string]string{"error": "A password is already set. Sign in instead."})
+		} else {
+			writeJSON(w, 500, map[string]string{"error": "Could not save the password. Is the data folder writable?"})
+		}
+		return
+	}
+	p.startSession(w, r)
+	writeJSON(w, 200, map[string]bool{"ok": true})
+}
+
+// changePassword replaces the saved password (needs the current one).
+func (p *Panel) changePassword(w http.ResponseWriter, r *http.Request) {
+	if p.creds.Mode() == "env" {
+		writeJSON(w, 400, map[string]string{"error": "Your password is set by the PANEL_PASSWORD setting. Change it there and recreate the container."})
+		return
+	}
+	if p.locked() {
+		writeJSON(w, 429, map[string]string{"error": "too many wrong passwords, wait a minute"})
+		return
+	}
+	var body struct {
+		Current string `json:"current"`
+		New     string `json:"new"`
+	}
+	json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<10)).Decode(&body)
+	if !p.creds.Check(body.Current) {
+		p.mu.Lock()
+		p.fails = append(p.fails, time.Now())
+		p.mu.Unlock()
+		time.Sleep(time.Second)
+		writeJSON(w, 400, map[string]string{"error": "Your current password is wrong."})
+		return
+	}
+	if err := ValidatePassword(body.New); err != nil {
+		writeJSON(w, 400, map[string]string{"error": err.Error()})
+		return
+	}
+	if err := p.creds.Change(body.New); err != nil {
+		writeJSON(w, 500, map[string]string{"error": "Could not save the password. Is the data folder writable?"})
+		return
+	}
+	p.startSession(w, r) // every other sign-in is now invalid; keep this browser signed in
 	writeJSON(w, 200, map[string]bool{"ok": true})
 }
 
@@ -153,9 +240,12 @@ func (p *Panel) routes() http.Handler {
 		writeJSON(w, 200, map[string]string{"version": version})
 	})
 	mux.HandleFunc("/api/session", func(w http.ResponseWriter, r *http.Request) { // lets the page ask "am I signed in?" without a 401
-		writeJSON(w, 200, map[string]bool{"authenticated": p.valid(r)})
+		mode := p.creds.Mode()
+		writeJSON(w, 200, map[string]any{"authenticated": p.valid(r), "mode": mode, "can_setup": mode == "setup" && privateClient(r)})
 	})
 	mux.HandleFunc("/api/login", p.login)
+	mux.HandleFunc("/api/setup", p.setup)
+	mux.HandleFunc("/api/password", p.auth(true, p.changePassword))
 	mux.HandleFunc("/api/logout", p.logout)
 	mux.HandleFunc("/api/status", p.auth(false, func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 200, p.m.Snapshot())
@@ -220,6 +310,10 @@ func (p *Panel) routes() http.Handler {
 		writeJSON(w, 200, map[string]bool{"ok": true})
 	}))
 	mux.HandleFunc("/api/update/settings", p.auth(true, func(w http.ResponseWriter, r *http.Request) {
+		if p.cfg.Managed {
+			writeJSON(w, 400, map[string]string{"error": "Updates are managed by CasaOS"})
+			return
+		}
 		var body struct {
 			Mode string `json:"mode"`
 			Hour int    `json:"hour"`

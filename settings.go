@@ -24,7 +24,7 @@ type Settings struct {
 var settingsMu sync.Mutex
 
 func readSettings(cfg Config) Settings {
-	s := Settings{Enabled: true, UpdateMode: "notify", AutoHour: 4, Schema: 1}
+	s := Settings{Enabled: false, UpdateMode: "notify", AutoHour: 4, Schema: 1} // a fresh install waits for the user to press Start
 	if b, err := os.ReadFile(filepath.Join(cfg.DataDir, "state.json")); err == nil {
 		json.Unmarshal(b, &s) // missing fields keep their defaults
 	}

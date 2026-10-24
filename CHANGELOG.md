@@ -3,6 +3,19 @@
 All notable changes to this project are documented here.
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versioning follows [SemVer](https://semver.org/).
 
+## [0.3.1] - 2026-10-25
+
+### Added
+- **Choose your password on first open.** `PANEL_PASSWORD` is now optional. Without it, a fresh install shows a "Create your password" page (minimum 8 characters). Only devices on your home network can create it; requests from the internet or through a proxy are refused. The password is stored salted and hashed in the data folder.
+- **Forgot your password?** A wrong password now shows how to get back in: delete `auth.json` in the data folder and reload, or run `docker exec sharetunnel sharetunnel reset-password`, which prints a new random password. Settings and shared links are kept, and everyone is signed out.
+- **Change password** on the Setup page. It asks for the current password and signs out every other browser.
+- `UPDATE_MODE=managed` for app stores such as CasaOS: turns off the built-in updater, shows when a new version exists, and points to the store's Update button.
+
+### Changed
+- A fresh install no longer starts the tunnel by itself. Press **Start tunnel** once; after that your choice is remembered.
+- `PANEL_PASSWORD=change-me` (the old example value) now counts as "not set", so you get the first-run page instead of a startup error.
+- A password set with `PANEL_PASSWORD` always wins over a saved one.
+
 ## [0.3.0] - 2026-10-24
 
 ### Added

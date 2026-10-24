@@ -74,8 +74,27 @@ function route() {
   $("#pageTitle").textContent = TITLES[view]; $("#app").classList.remove("nav-open");
   if (view === "logs") requestAnimationFrame(() => { const b = $("#logs"); b.scrollTop = b.scrollHeight; });
 }
-function showLogin() { $("#app").classList.add("hidden"); $("#login").classList.remove("hidden"); setTimeout(() => $("#pw").focus(), 50); }
-function showApp() { $("#login").classList.add("hidden"); $("#app").classList.remove("hidden"); route(); }
+let authMode = "file"; // env | file | setup, from /api/session
+function applyLoginMode(s) {
+  authMode = s.mode || authMode;
+  const setup = authMode === "setup";
+  $("#signinBox").classList.toggle("hidden", setup);
+  $("#setupBox").classList.toggle("hidden", !(setup && s.can_setup));
+  $("#setupBlocked").classList.toggle("hidden", !(setup && !s.can_setup));
+  $("#forgotEnv").classList.toggle("hidden", authMode !== "env");
+  $("#forgotFile").classList.toggle("hidden", authMode === "env");
+  setTimeout(() => (setup ? $("#npw1") : $("#pw")).focus(), 50);
+}
+async function showLogin() {
+  $("#app").classList.add("hidden"); $("#login").classList.remove("hidden");
+  try { applyLoginMode(await api("/api/session")); } catch (e) { /* offline: keep the sign-in form */ }
+}
+function loginDone() {
+  ["#loginErr", "#setupErr"].forEach(id => $(id).textContent = "");
+  ["#pw", "#npw1", "#npw2"].forEach(id => $(id).value = ""); $("#forgot").classList.add("hidden");
+  tick = 0; doctor = null; showApp(); poll();
+}
+function showApp() { $("#login").classList.add("hidden"); $("#app").classList.remove("hidden"); route(); renderPwCard(); }
 
 // ---------- render: tunnel, stats, health ----------
 function renderStatus() {
@@ -86,7 +105,7 @@ function renderStatus() {
   if (key !== toggleKey) { toggleKey = key; const b = $("#toggle"); b.className = on ? "btn danger" : "btn"; b.setAttribute("aria-label", on ? "Stop tunnel" : "Start tunnel"); b.replaceChildren(icon(on ? "stop" : "play"), h("span", {}, on ? "Stop tunnel" : "Start tunnel")); }
   const u = $("#heroUrl"); u.textContent = S.url || "Not running"; u.classList.toggle("live", !!S.url);
   if (S.url && S.url !== lastUrl) { u.classList.remove("flash"); void u.offsetWidth; u.classList.add("flash"); }
-  $("#heroSub").textContent = running ? "Online for " + dur(Date.now() / 1000 - S.since) + ". Your share links use this address." : S.status === "starting" ? "Connecting to Cloudflare…" : S.status === "error" ? (S.problem || "Something went wrong. See the activity log.") : "The tunnel is stopped. Start it to get an address anyone can open.";
+  $("#heroSub").textContent = running ? "Online for " + dur(Date.now() / 1000 - S.since) + ". Your share links use this address." : S.status === "starting" ? "Connecting to Cloudflare…" : S.status === "error" ? (S.problem || "Something went wrong. See the activity log.") : (doctor && !doctor.ready ? "The tunnel is off. Fix the issue on the Setup page first, then press Start tunnel." : "The tunnel is off. Press Start tunnel to get an address anyone can open.");
   $("#heroCopy").disabled = !S.url; $("#heroCopy").onclick = e => copy(S.url, e.currentTarget);
   const o = $("#heroOpen"); o.classList.toggle("disabled", !S.url); if (S.url) o.href = S.url; else o.removeAttribute("href");
 }
@@ -178,7 +197,8 @@ function renderUpdate() {
   ic.className = "upd-icon" + (u.available ? " avail" : u.error ? " bad" : ""); ic.replaceChildren(icon(u.available ? "download" : u.error ? "alert" : "check"));
   $("#updTitle").textContent = u.available ? "Version " + u.latest + " is available" : u.error ? "Couldn't check for updates" : u.dev ? "Development build" : u.checked_at ? "You're up to date" : "Not checked yet";
   $("#updSub").textContent = u.available ? "You have " + ver(u.current) + ". Your tunnel is back about 30 seconds after updating." : u.error ? u.error : u.dev ? "Update checks apply to official releases." : u.checked_at ? ver(u.current) + " is the latest version. Checked " + rel(u.checked_at) + "." : "Press the button to look for a new version.";
-  $("#applyBtn").classList.toggle("hidden", !u.available);
+  if (u.managed && u.available) $("#updSub").textContent = "You have " + ver(u.current) + ". Updates are managed by CasaOS: open this app's menu in CasaOS and choose Update.";
+  $("#applyBtn").classList.toggle("hidden", !u.available || !!u.managed); $("#prefsCard").classList.toggle("hidden", !!u.managed);
   const rl = $("#relLink"); rl.classList.toggle("hidden", !u.url); if (u.url) rl.href = u.url;
   renderNotes(u.latest ? u.notes : undefined);
   $$("#modes input").forEach(r => r.checked = r.value === u.mode); $("#hourBox").classList.toggle("hidden", u.mode !== "auto"); if (u.hour != null) $("#hour").value = u.hour;
@@ -243,6 +263,12 @@ async function saveConfig(reset) {
   } finally { b.disabled = false; b.replaceChildren(...old); }
 }
 
+function renderPwCard() {
+  const env = authMode === "env";
+  $("#pwFields").classList.toggle("hidden", env);
+  $("#pwNote").textContent = env ? "Your password is set by the PANEL_PASSWORD setting. To change it, edit that setting and recreate the container." : "Change the password you use to sign in. Anyone else who is signed in will be signed out.";
+}
+
 // ---------- boot ----------
 function renderAll() { renderStatus(); renderStats(); renderHealth(); renderLogs(); renderTables(); }
 async function poll() {
@@ -273,7 +299,27 @@ function bind() {
   $("#pwToggle").onclick = () => { const p = $("#pw"); p.type = p.type === "password" ? "text" : "password"; };
   $("#loginBtn").onclick = async () => {
     const b = $("#loginBtn"); b.disabled = true; const r = await api("/api/login", { password: $("#pw").value }); b.disabled = false;
-    if (r.ok) { $("#loginErr").textContent = ""; $("#pw").value = ""; tick = 0; showApp(); poll(); } else $("#loginErr").textContent = r.error || "Sign in failed";
+    if (r.ok) loginDone();
+    else if (r.error === "setup_required") showLogin(); // the password was reset while this page was open
+    else { $("#loginErr").textContent = r.error || "Sign in failed"; $("#forgot").classList.remove("hidden"); }
+  };
+  $("#forgotLink").onclick = () => $("#forgot").classList.toggle("hidden");
+  $("#cmdResetCopy").onclick = e => copy($("#cmdReset").textContent, e.currentTarget);
+  $("#npwToggle").onclick = () => { const t = $("#npw1").type === "password" ? "text" : "password"; $("#npw1").type = t; $("#npw2").type = t; };
+  $("#setupBtn").onclick = async () => {
+    const a = $("#npw1").value, err = $("#setupErr");
+    if (a.length < 8) { err.textContent = "Use at least 8 characters."; return; }
+    if (a !== $("#npw2").value) { err.textContent = "The two passwords don't match."; return; }
+    const b = $("#setupBtn"); b.disabled = true; const r = await api("/api/setup", { password: a }); b.disabled = false;
+    if (r.ok) { authMode = "file"; loginDone(); toast("Password created. Welcome!"); } else err.textContent = r.error || "Could not create the password";
+  };
+  $("#npw2").addEventListener("keydown", e => { if (e.key === "Enter") $("#setupBtn").click(); });
+  $("#pwSave").onclick = async () => {
+    const n1 = $("#pwNew").value, err = $("#pwErr"); err.textContent = "";
+    if (n1.length < 8) { err.textContent = "Use at least 8 characters."; return; }
+    if (n1 !== $("#pwNew2").value) { err.textContent = "The new passwords don't match."; return; }
+    const b = $("#pwSave"); b.disabled = true; const r = await api("/api/password", { current: $("#pwCur").value, new: n1 }); b.disabled = false;
+    if (r.ok) { ["#pwCur", "#pwNew", "#pwNew2"].forEach(id => $(id).value = ""); toast("Password changed"); } else err.textContent = r.error || "Could not change the password";
   };
   $("#pw").addEventListener("keydown", e => { if (e.key === "Enter") $("#loginBtn").click(); });
   window.addEventListener("hashchange", route); document.addEventListener("visibilitychange", () => { if (!document.hidden) poll(); });
@@ -282,5 +328,5 @@ function bind() {
 (async () => {
   paintTheme(); bind(); $("#sharesBox").replaceChildren(h("div", { class: "skel" }, ), h("div", { class: "skel" }), h("div", { class: "skel" }));
   const sess = await api("/api/session");
-  if (sess.authenticated) { showApp(); poll(); } else showLogin();
+  if (sess.authenticated) { authMode = sess.mode; showApp(); poll(); } else showLogin();
 })();

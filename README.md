@@ -69,7 +69,7 @@ Open <http://localhost:9099> and sign in with password `demo`.
 
 **You need:** a Linux host running Docker, with Nextcloud in Docker and a **PostgreSQL** database (for example Nextcloud installed from the CasaOS app store).
 
-1. Save this as `docker-compose.yml` and **set a real password**:
+1. Save this as `docker-compose.yml`:
 
    ```yaml
    services:
@@ -79,7 +79,6 @@ Open <http://localhost:9099> and sign in with password `demo`.
        network_mode: host
        restart: unless-stopped
        environment:
-         PANEL_PASSWORD: "change-me"      # required
          TZ: Europe/London                # your time zone
          NC_CONTAINER: nextcloud          # name of your Nextcloud container
          NC_URL: http://localhost:7580    # where Nextcloud listens on this host
@@ -95,7 +94,7 @@ Open <http://localhost:9099> and sign in with password `demo`.
    docker compose up -d
    ```
 
-3. Open `http://<your-server-ip>:9099`, sign in, and press **Start tunnel**.
+3. Open `http://<your-server-ip>:9099`. The first time, ShareTunnel asks you to **create a password** (only possible from your home network). Then press **Start tunnel**.
 
 Not sure about your container names or port? Open the **Setup** page in the panel: it checks everything, lists the Nextcloud and PostgreSQL containers it finds, and lets you pick them with one click. You can also run `docker exec sharetunnel sharetunnel doctor` (or `docker ps`) from a terminal.
 
@@ -111,6 +110,7 @@ ShareTunnel checks its own setup and tells you what to fix in plain words, inste
 | "No container named ... was found" | Your Nextcloud has a different container name | Pick it on the **Setup** page |
 | "Nothing is answering at http://localhost:..." | Wrong Nextcloud port | Enter the right address on the **Setup** page (`docker port <nextcloud>` shows it) |
 | "Share database" warning | Wrong database container, or MySQL/MariaDB (not supported yet) | The tunnel still works; fix the name on the **Setup** page |
+| "Forgot your password" | You lost the panel password | Delete `auth.json` in the data folder and reload the page to create a new one, or run `docker exec sharetunnel sharetunnel reset-password` (prints a new random password). Settings and shared links are kept. If you use `PANEL_PASSWORD`, change that setting instead. |
 | "port 9099 is already in use" | Another program uses the panel port | Set `PANEL_PORT` to a free port, for example `-e PANEL_PORT=9100` |
 
 If Nextcloud isn't ready yet (for example right after a reboot), ShareTunnel waits and starts the tunnel by itself as soon as it is.
@@ -137,7 +137,8 @@ All settings are environment variables.
 
 | Variable | Default | Description |
 |---|---|---|
-| `PANEL_PASSWORD` | *(required)* | Password for the panel. The app refuses to start without one. |
+| `PANEL_PASSWORD` | *(optional)* | Sets the panel password from the environment. Leave it out and ShareTunnel asks you to create one on first open (stored hashed in the data folder). If set, it wins over a saved password. |
+| `UPDATE_MODE` | *(empty)* | Set to `managed` when an app store such as CasaOS handles updates. Turns off the built-in updater. |
 | `PANEL_PORT` | `9099` | Port of the web panel. |
 | `NC_CONTAINER` | `nextcloud` | Name of the Nextcloud container. |
 | `NC_URL` | `http://localhost:7580` | Address of Nextcloud as seen from the host. |
