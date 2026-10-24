@@ -3,7 +3,7 @@
 All notable changes to this project are documented here.
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versioning follows [SemVer](https://semver.org/).
 
-## [Unreleased]
+## [0.3.0] - 2026-10-24
 
 ### Added
 - **Setup page and first-run checks.** ShareTunnel now verifies Docker access, the Nextcloud container, that Nextcloud is installed, the Nextcloud address, the database and cloudflared, and explains any problem in plain words with a suggested fix.
