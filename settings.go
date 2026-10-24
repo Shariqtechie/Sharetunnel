@@ -14,6 +14,11 @@ type Settings struct {
 	AutoHour   int    `json:"auto_hour"`   // hour of day for auto-update
 	AutoTried  string `json:"auto_tried"`  // last version auto-update attempted
 	Schema     int    `json:"schema"`
+
+	// Set on the Setup page. Empty = use the environment variable / default.
+	NCContainer string `json:"nc_container,omitempty"`
+	NCURL       string `json:"nc_url,omitempty"`
+	DBContainer string `json:"db_container,omitempty"`
 }
 
 var settingsMu sync.Mutex
@@ -40,4 +45,21 @@ func updateSettings(cfg Config, fn func(*Settings)) {
 	os.MkdirAll(cfg.DataDir, 0o755)
 	b, _ := json.Marshal(s)
 	os.WriteFile(filepath.Join(cfg.DataDir, "state.json"), b, 0o644)
+}
+
+// effectiveConfig applies the values saved on the Setup page over the
+// environment defaults. Call it wherever Nextcloud or the database is used,
+// so changes take effect without restarting the container.
+func effectiveConfig(cfg Config) Config {
+	s := loadSettings(cfg)
+	if s.NCContainer != "" {
+		cfg.NCContainer = s.NCContainer
+	}
+	if s.NCURL != "" {
+		cfg.NCURL = s.NCURL
+	}
+	if s.DBContainer != "" {
+		cfg.DBContainer = s.DBContainer
+	}
+	return cfg
 }

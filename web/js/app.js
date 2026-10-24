@@ -21,12 +21,12 @@ function h(tag, props = {}, ...kids) {
 
 // ---------- state ----------
 const S = { status: "", url: "", since: 0, logs: [], version: "" };
-let shares = [], sharesErr = "", sharesLoaded = false, upd = {};
+let shares = [], sharesErr = "", sharesLoaded = false, upd = {}, doctor = null, doctorBusy = false, formDirty = false;
 let filter = "all", sortBy = "new", query = "", logErrOnly = false;
 let tick = 0, lastUrl = null, tableKey = "", logKey = "", toggleKey = "";
 
 const KIND = { folder: { icon: "folder", label: "Folder" }, video: { icon: "film", label: "Video" }, image: { icon: "image", label: "Image" }, audio: { icon: "music", label: "Audio" }, file: { icon: "file", label: "File" } };
-const TITLES = { dashboard: "Dashboard", shares: "Shared links", logs: "Activity log", updates: "Updates" };
+const TITLES = { dashboard: "Dashboard", shares: "Shared links", logs: "Activity log", setup: "Setup", updates: "Updates" };
 const STATUS = { running: "Online", starting: "Connecting", stopped: "Stopped", error: "Error" };
 
 // ---------- formatting ----------
@@ -86,7 +86,7 @@ function renderStatus() {
   if (key !== toggleKey) { toggleKey = key; const b = $("#toggle"); b.className = on ? "btn danger" : "btn"; b.setAttribute("aria-label", on ? "Stop tunnel" : "Start tunnel"); b.replaceChildren(icon(on ? "stop" : "play"), h("span", {}, on ? "Stop tunnel" : "Start tunnel")); }
   const u = $("#heroUrl"); u.textContent = S.url || "Not running"; u.classList.toggle("live", !!S.url);
   if (S.url && S.url !== lastUrl) { u.classList.remove("flash"); void u.offsetWidth; u.classList.add("flash"); }
-  $("#heroSub").textContent = running ? "Online for " + dur(Date.now() / 1000 - S.since) + ". Your share links use this address." : S.status === "starting" ? "Connecting to Cloudflare…" : S.status === "error" ? "Could not register the address with Nextcloud. See the activity log." : "The tunnel is stopped. Start it to get an address anyone can open.";
+  $("#heroSub").textContent = running ? "Online for " + dur(Date.now() / 1000 - S.since) + ". Your share links use this address." : S.status === "starting" ? "Connecting to Cloudflare…" : S.status === "error" ? (S.problem || "Something went wrong. See the activity log.") : "The tunnel is stopped. Start it to get an address anyone can open.";
   $("#heroCopy").disabled = !S.url; $("#heroCopy").onclick = e => copy(S.url, e.currentTarget);
   const o = $("#heroOpen"); o.classList.toggle("disabled", !S.url); if (S.url) o.href = S.url; else o.removeAttribute("href");
 }
@@ -104,8 +104,8 @@ function renderStats() {
 function renderHealth() {
   const st = S.status, short = t => t.length > 70 ? t.slice(0, 70) + "…" : t;
   const items = [
-    { s: st === "running" ? "ok" : st === "starting" ? "warn" : st === "error" ? "bad" : "idle", t: "Cloudflare tunnel", d: st === "running" ? "Connected" : st === "starting" ? "Connecting…" : st === "error" ? "Failed to register address" : "Stopped" },
-    { s: st === "running" ? "ok" : st === "error" ? "bad" : "idle", t: "Nextcloud access", d: st === "running" ? "Address added to trusted domains" : st === "error" ? "Could not update trusted domains" : "Waiting for the tunnel" },
+    { s: st === "running" ? "ok" : st === "starting" ? "warn" : st === "error" ? "bad" : "idle", t: "Cloudflare tunnel", d: st === "running" ? "Connected" : st === "starting" ? "Connecting…" : st === "error" ? (S.problem ? "Not started, see Setup" : "Failed to register address") : "Stopped" },
+    { s: st === "running" ? "ok" : st === "error" ? "bad" : "idle", t: "Nextcloud access", d: st === "running" ? "Address added to trusted domains" : st === "error" ? short(S.problem || "Could not update trusted domains") : "Waiting for the tunnel" },
     { s: sharesErr ? "bad" : sharesLoaded ? "ok" : "idle", t: "Share database", d: sharesErr ? short(sharesErr) : sharesLoaded ? "Read-only access OK" : "Checking…" },
     { s: upd.error ? "warn" : upd.available ? "info" : upd.checked_at ? "ok" : "idle", t: "Software updates", d: upd.error ? short(upd.error) : upd.available ? upd.latest + " is available" : upd.dev ? "Development build" : upd.checked_at ? "Up to date" : "Not checked yet" },
   ];
@@ -203,6 +203,46 @@ async function saveSettings() {
   const mode = ($("#modes input:checked") || {}).value || "notify"; upd = await api("/api/update/settings", { mode, hour: +$("#hour").value }); renderUpdate(); toast("Preferences saved");
 }
 
+// ---------- render: setup ----------
+const CHK = { ok: "ok", warn: "warn", fail: "bad" };
+function pickButtons(box, names, input) {
+  box.replaceChildren(...(names || []).map(n => h("button", { class: "btn sm secondary", type: "button", onclick: () => { input.value = n; formDirty = true; } }, n)));
+}
+function renderSetup() {
+  if (!doctor) return;
+  const fails = doctor.checks.filter(c => c.status === "fail");
+  $("#setupChecks").replaceChildren(...doctor.checks.map(c => h("li", { class: CHK[c.status] },
+    h("span", { class: "hi" }, icon(c.status === "ok" ? "check" : "alert")),
+    h("div", {}, h("b", {}, c.title), h("small", {}, c.detail), c.fix && c.status !== "ok" && h("small", { class: "fix" }, c.fix)))));
+  const bn = $("#setupBanner"); bn.classList.toggle("hidden", !fails.length);
+  if (fails.length) $("#setupBannerText").textContent = fails[0].title + ": " + fails[0].detail;
+  const nb = $("#navSetup"); nb.classList.toggle("hidden", !fails.length); nb.classList.add("warn");
+  if (!formDirty) { $("#cfgNC").value = doctor.config.nc_container; $("#cfgURL").value = doctor.config.nc_url; $("#cfgDB").value = doctor.config.db_container; }
+  pickButtons($("#picksNC"), doctor.nextcloud_candidates, $("#cfgNC"));
+  pickButtons($("#picksDB"), doctor.postgres_candidates, $("#cfgDB"));
+  pickButtons($("#picksURL"), doctor.suggested_url && doctor.suggested_url !== $("#cfgURL").value ? [doctor.suggested_url] : [], $("#cfgURL"));
+  $("#portNote").textContent = "Panel port: " + doctor.config.panel_port + ". To change it, set PANEL_PORT when you create the container (for example -e PANEL_PORT=9100) and open the panel on the new port.";
+}
+async function loadDoctor(fresh) {
+  if (doctorBusy) return; doctorBusy = true;
+  try { doctor = await api("/api/doctor" + (fresh ? "?fresh=1" : "")); renderSetup(); } catch (e) { /* login screen handles 401 */ } finally { doctorBusy = false; }
+}
+async function recheck() {
+  const b = $("#recheck"), old = [...b.childNodes]; b.disabled = true; b.replaceChildren(h("span", { class: "spin" }), "Checking…");
+  try { formDirty = false; await loadDoctor(true); toast(doctor && doctor.ready ? "Everything looks good" : "Some things need attention", doctor && doctor.ready ? "" : "bad"); }
+  finally { b.disabled = false; b.replaceChildren(...old); }
+}
+async function saveConfig(reset) {
+  const b = $("#cfgSave"), old = [...b.childNodes]; b.disabled = true; b.replaceChildren(h("span", { class: "spin" }), "Checking…"); $("#cfgErr").textContent = "";
+  const body = reset ? { nc_container: "", nc_url: "", db_container: "" } : { nc_container: $("#cfgNC").value, nc_url: $("#cfgURL").value, db_container: $("#cfgDB").value };
+  try {
+    const r = await api("/api/config", body);
+    if (r.error) { $("#cfgErr").textContent = r.error; return; }
+    doctor = r; formDirty = false; renderSetup(); poll();
+    toast(r.ready ? "Saved. Everything looks good" : "Saved, but some checks still fail", r.ready ? "" : "bad");
+  } finally { b.disabled = false; b.replaceChildren(...old); }
+}
+
 // ---------- boot ----------
 function renderAll() { renderStatus(); renderStats(); renderHealth(); renderLogs(); renderTables(); }
 async function poll() {
@@ -210,7 +250,7 @@ async function poll() {
   try {
     Object.assign(S, await api("/api/status")); renderAll();
     if (!sharesLoaded || S.url !== lastUrl || tick % 7 === 0) loadShares();
-    lastUrl = S.url; if (tick % 20 === 0) loadUpdate(); tick++;
+    lastUrl = S.url; if (tick % 20 === 0) loadUpdate(); if (!doctor || tick % 10 === 0) loadDoctor(false); tick++;
   } catch (e) { /* login screen handles 401 */ }
 }
 function bind() {
@@ -221,6 +261,9 @@ function bind() {
   $("#refresh").onclick = async e => { const b = e.currentTarget; b.disabled = true; await loadShares(); b.disabled = false; toast("Share list refreshed"); };
   $$("#logFilter button").forEach(b => b.onclick = () => { logErrOnly = b.dataset.f === "err"; $$("#logFilter button").forEach(x => x.classList.toggle("on", x === b)); renderLogs(); });
   $("#logDl").onclick = () => { const a = h("a", { href: URL.createObjectURL(new Blob([S.logs.join("\n") + "\n"], { type: "text/plain" })), download: "sharetunnel.log" }); document.body.append(a); a.click(); a.remove(); };
+  $("#recheck").onclick = recheck; $("#cfgSave").onclick = () => saveConfig(false); $("#cfgReset").onclick = () => saveConfig(true);
+  ["#cfgNC", "#cfgURL", "#cfgDB"].forEach(id => $(id).oninput = () => { formDirty = true; });
+  $("#cmdCopy").onclick = e => copy($("#cmdPs").textContent, e.currentTarget);
   $("#checkBtn").onclick = checkNow; $("#applyBtn").onclick = applyNow;
   $$("#modes input").forEach(r => r.onchange = saveSettings); $("#hour").onchange = saveSettings;
   $("#toggle").onclick = async e => { const b = e.currentTarget; b.disabled = true; await api(S.status === "stopped" ? "/api/start" : "/api/stop", {}); b.disabled = false; poll(); };

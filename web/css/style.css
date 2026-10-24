@@ -212,3 +212,19 @@ tbody tr:first-child td { border-top:0; } tbody tr { transition:background .12s;
 }
 @keyframes fadein { from { opacity:0; } }
 @media (prefers-reduced-motion:reduce) { *,*::before,*::after { animation:none !important; transition:none !important; } }
+
+/* ---- setup page and notices ---- */
+.notice { display:flex; align-items:center; gap:14px; padding:14px 18px; margin-bottom:16px; border-color:var(--warn); background:var(--warn-soft); }
+.notice > .i { width:20px; height:20px; color:var(--warn); flex:none; }
+.notice b { font-weight:600; }
+.health .fix { display:block; margin-top:3px; color:var(--text); font-size:12px; overflow-wrap:anywhere; }
+.health small { overflow-wrap:anywhere; }
+.setup-form input[type=text] { width:100%; }
+.setup-form .field-label { margin:16px 0 6px; }
+.picks { display:flex; flex-wrap:wrap; gap:6px; margin-top:6px; }
+.picks:empty { display:none; }
+.setup-form .row { margin-top:4px; }
+.setup-help { margin-top:20px; padding-top:16px; border-top:1px solid var(--border); }
+.cmdline { display:flex; align-items:center; gap:8px; margin:8px 0; padding:8px 8px 8px 12px; background:var(--surface2); border:1px solid var(--border); border-radius:9px; }
+.cmdline code { flex:1; overflow-x:auto; white-space:nowrap; font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; }
+.dot-badge.warn { background:var(--warn); box-shadow:0 0 0 3px var(--warn-soft); }

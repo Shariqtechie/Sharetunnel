@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/subtle"
 	"embed"
@@ -24,6 +25,10 @@ type Panel struct {
 	mu       sync.Mutex
 	sessions map[string]time.Time
 	fails    []time.Time
+
+	repMu sync.Mutex // guards the cached setup report
+	rep   Report
+	repAt time.Time
 }
 
 func NewPanel(cfg Config, m *Manager, u *Updater, password string) *Panel {
@@ -65,6 +70,19 @@ func (p *Panel) auth(post bool, next http.HandlerFunc) http.HandlerFunc {
 		}
 		next(w, r)
 	}
+}
+
+// report returns the setup checks. Results are cached for a few seconds so
+// several open browser tabs don't each run Docker commands.
+func (p *Panel) report(ctx context.Context, fresh bool) Report {
+	p.repMu.Lock()
+	defer p.repMu.Unlock()
+	if !fresh && time.Since(p.repAt) < 8*time.Second && len(p.rep.Checks) > 0 {
+		return p.rep
+	}
+	p.rep = runChecks(ctx, p.cfg)
+	p.repAt = time.Now()
+	return p.rep
 }
 
 func (p *Panel) locked() bool {
@@ -158,6 +176,34 @@ func (p *Panel) routes() http.Handler {
 	mux.HandleFunc("/api/stop", p.auth(true, func(w http.ResponseWriter, r *http.Request) {
 		p.m.Stop()
 		writeJSON(w, 200, map[string]bool{"ok": true})
+	}))
+	mux.HandleFunc("/api/doctor", p.auth(false, func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, 200, p.report(r.Context(), r.URL.Query().Get("fresh") == "1"))
+	}))
+	mux.HandleFunc("/api/config", p.auth(true, func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			NCContainer string `json:"nc_container"`
+			NCURL       string `json:"nc_url"`
+			DBContainer string `json:"db_container"`
+		}
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<10)).Decode(&body); err != nil {
+			writeJSON(w, 400, map[string]string{"error": "could not read the form"})
+			return
+		}
+		nc, ncURL, db, err := validateConfigInput(body.NCContainer, body.NCURL, body.DBContainer)
+		if err != nil {
+			writeJSON(w, 400, map[string]string{"error": err.Error()})
+			return
+		}
+		if p.cfg.Demo {
+			writeJSON(w, 400, map[string]string{"error": "Settings can't be changed in demo mode"})
+			return
+		}
+		// stop the tunnel (if on) so the old trusted domain is cleaned up, save, start again
+		p.m.Restart(func() {
+			updateSettings(p.cfg, func(s *Settings) { s.NCContainer, s.NCURL, s.DBContainer = nc, ncURL, db })
+		})
+		writeJSON(w, 200, p.report(r.Context(), true))
 	}))
 	mux.HandleFunc("/api/update", p.auth(false, func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 200, p.u.Info())

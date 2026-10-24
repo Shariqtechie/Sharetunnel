@@ -97,9 +97,23 @@ Open <http://localhost:9099> and sign in with password `demo`.
 
 3. Open `http://<your-server-ip>:9099`, sign in, and press **Start tunnel**.
 
-Not sure about your container names or port? Run `docker ps --format "table {{.Names}}\t{{.Ports}}"`.
+Not sure about your container names or port? Open the **Setup** page in the panel: it checks everything, lists the Nextcloud and PostgreSQL containers it finds, and lets you pick them with one click. You can also run `docker exec sharetunnel sharetunnel doctor` (or `docker ps`) from a terminal.
 
 Then in Nextcloud create a share link as usual. It appears in ShareTunnel with a **Copy link** button that already uses the public address.
+
+### Something not working on first start?
+
+ShareTunnel checks its own setup and tells you what to fix in plain words, instead of failing silently.
+
+| You see | What it means | Fix |
+|---|---|---|
+| "Can't reach Docker" | The Docker socket isn't mounted | Add `-v /var/run/docker.sock:/var/run/docker.sock` |
+| "No container named ... was found" | Your Nextcloud has a different container name | Pick it on the **Setup** page |
+| "Nothing is answering at http://localhost:..." | Wrong Nextcloud port | Enter the right address on the **Setup** page (`docker port <nextcloud>` shows it) |
+| "Share database" warning | Wrong database container, or MySQL/MariaDB (not supported yet) | The tunnel still works; fix the name on the **Setup** page |
+| "port 9099 is already in use" | Another program uses the panel port | Set `PANEL_PORT` to a free port, for example `-e PANEL_PORT=9100` |
+
+If Nextcloud isn't ready yet (for example right after a reboot), ShareTunnel waits and starts the tunnel by itself as soon as it is.
 
 ## 🔍 How it works
 

@@ -41,6 +41,7 @@
     <symbol id="i-download" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></symbol>
     <symbol id="i-hdd" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="12" x2="2" y2="12"/><path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/><line x1="6" y1="16" x2="6.01" y2="16"/><line x1="10" y1="16" x2="10.01" y2="16"/></symbol>
     <symbol id="i-eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></symbol>
+    <symbol id="i-settings" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></symbol>
 </defs></svg>
 
 <!-- ============ LOGIN ============ -->
@@ -69,6 +70,7 @@
       <a class="nav" href="#/dashboard" data-view="dashboard"><svg class="i"><use href="#i-home"/></svg>Dashboard</a>
       <a class="nav" href="#/shares" data-view="shares"><svg class="i"><use href="#i-link"/></svg>Shared links<span class="count" id="navCount"></span></a>
       <a class="nav" href="#/logs" data-view="logs"><svg class="i"><use href="#i-terminal"/></svg>Activity log</a>
+      <a class="nav" href="#/setup" data-view="setup"><svg class="i"><use href="#i-settings"/></svg>Setup<span class="dot-badge hidden" id="navSetup"></span></a>
       <a class="nav" href="#/updates" data-view="updates"><svg class="i"><use href="#i-cloud"/></svg>Updates<span class="dot-badge hidden" id="navUpdate"></span></a>
     </nav>
     <div class="side-foot">
@@ -95,6 +97,11 @@
 
       <!-- Dashboard -->
       <section class="view" id="view-dashboard">
+        <div class="card notice hidden" id="setupBanner" role="alert">
+          <svg class="i"><use href="#i-alert"/></svg>
+          <div class="grow"><b>Setup needs attention</b><div class="muted sm" id="setupBannerText"></div></div>
+          <a class="btn secondary" href="#/setup">Open setup</a>
+        </div>
         <div class="card hero">
           <div class="hero-main">
             <div class="eyebrow">Public address</div>
@@ -146,6 +153,39 @@
           <button class="btn secondary" id="logDl"><svg class="i"><use href="#i-download"/></svg>Download</button>
         </div>
         <div class="card flush"><div class="console" id="logs" role="log" aria-live="polite"></div></div>
+      </section>
+
+      <!-- Setup -->
+      <section class="view hidden" id="view-setup">
+        <div class="grid2">
+          <div class="card">
+            <div class="card-head"><h3>Setup check</h3><button class="btn secondary sm" id="recheck"><svg class="i"><use href="#i-refresh"/></svg><span>Re-check</span></button></div>
+            <ul class="health" id="setupChecks"></ul>
+          </div>
+          <div class="card setup-form">
+            <div class="card-head"><h3>Where is Nextcloud?</h3></div>
+            <p class="muted sm">ShareTunnel guesses these names. If a check on the left fails, correct them here. Changes apply straight away and restart the tunnel if it is running.</p>
+            <label class="field-label" for="cfgNC">Nextcloud container</label>
+            <input id="cfgNC" type="text" autocomplete="off" spellcheck="false" placeholder="nextcloud">
+            <div class="picks" id="picksNC"></div>
+            <label class="field-label" for="cfgURL">Nextcloud address (as seen from this server)</label>
+            <input id="cfgURL" type="text" autocomplete="off" spellcheck="false" placeholder="http://localhost:7580">
+            <div class="picks" id="picksURL"></div>
+            <label class="field-label" for="cfgDB">Database container (PostgreSQL)</label>
+            <input id="cfgDB" type="text" autocomplete="off" spellcheck="false" placeholder="db-nextcloud">
+            <div class="picks" id="picksDB"></div>
+            <div class="form-error" id="cfgErr" role="alert"></div>
+            <div class="row">
+              <button class="btn" id="cfgSave"><svg class="i"><use href="#i-check"/></svg><span>Save and re-check</span></button>
+              <button class="btn secondary" id="cfgReset">Use defaults</button>
+            </div>
+            <div class="setup-help">
+              <div class="muted sm">Not sure of the names? Run this on your server and paste the container names above:</div>
+              <div class="cmdline"><code id="cmdPs">sudo docker ps</code><button class="icon-btn" id="cmdCopy" aria-label="Copy command"><svg class="i"><use href="#i-copy"/></svg></button></div>
+              <div class="muted sm" id="portNote"></div>
+            </div>
+          </div>
+        </div>
       </section>
 
       <!-- Updates -->

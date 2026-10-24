@@ -3,6 +3,19 @@
 All notable changes to this project are documented here.
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versioning follows [SemVer](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+- **Setup page and first-run checks.** ShareTunnel now verifies Docker access, the Nextcloud container, that Nextcloud is installed, the Nextcloud address, the database and cloudflared, and explains any problem in plain words with a suggested fix.
+- Detects Nextcloud and PostgreSQL containers on the server and lets you pick them (and the Nextcloud address) on the new **Setup** page. Changes apply immediately, no restart needed.
+- Dashboard banner and menu badge when setup needs attention.
+- `sharetunnel doctor` command (`docker exec sharetunnel sharetunnel doctor`) prints the same checks in the terminal.
+
+### Changed
+- The tunnel no longer starts blindly. If Docker or Nextcloud isn't ready (for example right after a reboot) it reports why and retries every 30 seconds until it is.
+- Clear messages for a missing password, an invalid or already-used `PANEL_PORT`, and Docker or database errors instead of raw error text.
+- Stopping the tunnel can no longer hang if the tunnel process misbehaves.
+
 ## [0.2.0] - 2026-10-23
 
 ### Added

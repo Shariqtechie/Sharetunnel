@@ -3,6 +3,7 @@
 //	sharetunnel serve    web panel + tunnel manager (default in Docker)
 //	sharetunnel run      command-line mode (no panel)
 //	sharetunnel shares   list public share links
+//	sharetunnel doctor   check the setup and say what to fix
 //	sharetunnel version
 //	sharetunnel apply-update   (internal: used by the updater helper container)
 package main
@@ -12,14 +13,19 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
 	"os/signal"
 	"regexp"
+	"strconv"
 	"strings"
 	"syscall"
+	"time"
 )
 
 var version = "dev"
@@ -118,6 +124,7 @@ func listShares(cfg Config) ([]ShareOut, error) {
 	if cfg.Demo {
 		return demoShares(), nil
 	}
+	cfg = effectiveConfig(cfg)
 	cmd := exec.Command("docker", "exec",
 		"-e", "SQL="+sharesSQL,
 		"-e", "PGOPTIONS=-c default_transaction_read_only=on", // read-only, always
@@ -127,11 +134,11 @@ func listShares(cfg Config) ([]ShareOut, error) {
 	cmd.Stderr = &stderr
 	out, err := cmd.Output()
 	if err != nil {
-		return nil, fmt.Errorf("%v: %s", err, strings.TrimSpace(stderr.String()))
+		return nil, errors.New(friendly(stderr.String() + " " + err.Error()))
 	}
 	var shares []Share
 	if err := json.Unmarshal(bytes.TrimSpace(out), &shares); err != nil {
-		return nil, fmt.Errorf("bad JSON from database: %v", err)
+		return nil, errors.New("The database answered with something unexpected. Is this Nextcloud's PostgreSQL database?")
 	}
 	res := make([]ShareOut, 0, len(shares))
 	for _, s := range shares {
@@ -185,31 +192,37 @@ func printShares(cfg Config, base string) {
 // and returns when cloudflared exits.
 func runTunnel(ctx context.Context, cfg Config, logf func(string, ...any), onURL func(string)) error {
 	cmd := exec.CommandContext(ctx, "cloudflared", "tunnel", "--no-autoupdate", "--url", cfg.NCURL)
-	stderr, err := cmd.StderrPipe()
-	if err != nil {
-		return err
-	}
+	pr, pw := io.Pipe()
+	cmd.Stderr = pw
+	cmd.WaitDelay = 3 * time.Second // never hang on Stop, even if a child keeps the pipe open
 	if err := cmd.Start(); err != nil {
 		return err
 	}
-	found := false
-	sc := bufio.NewScanner(stderr)
-	for sc.Scan() {
-		line := sc.Text()
-		if !found {
-			if u := urlRe.FindString(line); u != "" && !strings.HasPrefix(u, "https://api.") {
-				found = true
-				go onURL(u)
+	scanned := make(chan struct{})
+	go func() {
+		defer close(scanned)
+		found := false
+		sc := bufio.NewScanner(pr)
+		for sc.Scan() {
+			line := sc.Text()
+			if !found {
+				if u := urlRe.FindString(line); u != "" && !strings.HasPrefix(u, "https://api.") {
+					found = true
+					go onURL(u)
+				}
+			}
+			if strings.Contains(line, "canceled by remote") {
+				continue // someone stopped a download, harmless
+			}
+			if strings.Contains(line, " ERR ") || strings.Contains(line, " WRN ") {
+				logf("[cloudflared] %s", line)
 			}
 		}
-		if strings.Contains(line, "canceled by remote") {
-			continue // someone stopped a download, harmless
-		}
-		if strings.Contains(line, " ERR ") || strings.Contains(line, " WRN ") {
-			logf("[cloudflared] %s", line)
-		}
-	}
-	return cmd.Wait()
+	}()
+	err := cmd.Wait()
+	pw.Close()
+	<-scanned
+	return err
 }
 
 // ---------- commands ----------
@@ -220,7 +233,13 @@ func serve(cfg Config) {
 		pw = "demo"
 	}
 	if pw == "" || pw == "change-me" {
-		fmt.Println("ERROR: set PANEL_PASSWORD to a real password (not empty, not 'change-me').")
+		fmt.Println("ShareTunnel can't start yet: no panel password is set.")
+		fmt.Println("Add a real password (not empty, not 'change-me') and start it again, for example:")
+		fmt.Println("    docker run ... -e PANEL_PASSWORD=pick-something-long ...")
+		os.Exit(1)
+	}
+	if n, err := strconv.Atoi(cfg.PanelPort); err != nil || n < 1 || n > 65535 {
+		fmt.Printf("ShareTunnel can't start: PANEL_PORT=%q is not a valid port. Use a number from 1 to 65535, for example 9099.\n", cfg.PanelPort)
 		os.Exit(1)
 	}
 	m := NewManager(cfg, true)
@@ -229,6 +248,15 @@ func serve(cfg Config) {
 	}
 	u := NewUpdater(cfg, m)
 	srv := &http.Server{Addr: ":" + cfg.PanelPort, Handler: NewPanel(cfg, m, u, pw).routes()}
+
+	// Bind the port first so a clash gives a clear message instead of a stack of logs.
+	ln, err := net.Listen("tcp", srv.Addr)
+	if err != nil {
+		fmt.Printf("ShareTunnel can't start: port %s is already in use by another program.\n", cfg.PanelPort)
+		fmt.Println("Pick a free port by adding  -e PANEL_PORT=9100  (any free number) and start it again.")
+		fmt.Println("To see what is using ports on this machine:  sudo ss -tlnp")
+		os.Exit(1)
+	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -239,11 +267,24 @@ func serve(cfg Config) {
 		m.Shutdown() // removes the trusted domain, keeps the saved on/off choice
 		srv.Shutdown(context.Background())
 	}()
+	go logSetupProblems(ctx, cfg, m)
 
 	m.logf("ShareTunnel %s - panel on port %s", version, cfg.PanelPort)
-	if err := srv.ListenAndServe(); err != http.ErrServerClosed {
+	if err := srv.Serve(ln); err != http.ErrServerClosed {
 		fmt.Println("ERROR:", err)
 		os.Exit(1)
+	}
+}
+
+// logSetupProblems writes anything that needs the user's attention to the activity log at startup.
+func logSetupProblems(ctx context.Context, cfg Config, m *Manager) {
+	for _, c := range runChecks(ctx, cfg).Checks {
+		switch c.Status {
+		case "fail":
+			m.logf("ERROR setup: %s: %s %s", c.Title, c.Detail, c.Fix)
+		case "warn":
+			m.logf("WRN setup: %s: %s", c.Title, c.Detail)
+		}
 	}
 }
 
@@ -267,6 +308,10 @@ func main() {
 		serve(cfg)
 	case "run":
 		run(cfg)
+	case "doctor":
+		if !printDoctor(cfg) {
+			os.Exit(1)
+		}
 	case "shares":
 		printShares(cfg, "")
 	case "apply-update":
@@ -274,7 +319,7 @@ func main() {
 	case "version":
 		fmt.Println(version)
 	default:
-		fmt.Println("usage: sharetunnel [serve|run|shares|version]")
+		fmt.Println("usage: sharetunnel [serve|run|shares|doctor|version]")
 		os.Exit(1)
 	}
 }
