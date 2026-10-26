@@ -168,7 +168,7 @@ An update pulls the new image, swaps the container, waits until it answers healt
 - **Be aware of the Docker socket.** ShareTunnel needs `/var/run/docker.sock` to run `occ` and to update itself. Anything with that access can control Docker on the host, so choose a strong password and keep the panel private.
 - Use passwords and expiry dates on sensitive Nextcloud shares, and enable 2FA for your Nextcloud accounts.
 
-Details and how to report a vulnerability: [SECURITY.md](SECURITY.md).
+Details and how to report a vulnerability: [SECURITY.md](.github/SECURITY.md).
 
 ## ❓ FAQ
 
@@ -204,7 +204,7 @@ Have an idea? [Open a feature request](https://github.com/Shariqtechie/Sharetunn
 
 ## 🤝 Contributing
 
-Contributions are welcome. You can run the whole panel locally in 30 seconds with `DEMO=true go run .`. See [CONTRIBUTING.md](CONTRIBUTING.md).
+Contributions are welcome. You can run the whole panel locally in 30 seconds with `DEMO=true go run ./cmd/sharetunnel`. See [CONTRIBUTING.md](.github/CONTRIBUTING.md).
 
 If ShareTunnel saves you time, a ⭐ helps other people find it.
 

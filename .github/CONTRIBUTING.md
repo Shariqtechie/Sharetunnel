@@ -7,7 +7,7 @@ Thanks for helping make ShareTunnel better. Bug reports, ideas and pull requests
 You need Go 1.22 or newer. No Nextcloud, Docker or tunnel needed, because demo mode fakes them:
 
 ```bash
-DEMO=true DATA_DIR=/tmp/st-data go run .
+DEMO=true DATA_DIR=/tmp/st-data go run ./cmd/sharetunnel
 # open http://localhost:9099, password: demo
 ```
 
@@ -26,15 +26,19 @@ CI runs the same checks and also builds the Docker image for amd64 and arm64.
 
 ## Project layout
 
-| File | Purpose |
+| Path | Purpose |
 |---|---|
-| `main.go` | Commands, configuration, Nextcloud and database helpers |
-| `manager.go` | Tunnel lifecycle: start, stop, auto-restart, trusted domains |
-| `panel.go` | Web server, authentication, API |
-| `updater.go` | Update check, apply and rollback |
-| `settings.go` | Saved settings |
-| `demo.go` | Demo mode data |
-| `web/` | The admin panel UI |
+| `cmd/sharetunnel/main.go` | Commands, configuration, Nextcloud and database helpers |
+| `cmd/sharetunnel/manager.go` | Tunnel lifecycle: start, stop, auto-restart, trusted domains |
+| `cmd/sharetunnel/panel.go` | Web server and API |
+| `cmd/sharetunnel/auth.go` | Panel password: first-run setup, sign-in, reset |
+| `cmd/sharetunnel/doctor.go` | Setup checks and plain-words error messages |
+| `cmd/sharetunnel/updater.go` | Update check, apply and rollback |
+| `cmd/sharetunnel/settings.go` | Saved settings |
+| `cmd/sharetunnel/demo.go` | Demo mode data |
+| `web/` | The admin panel UI (HTML, CSS, JavaScript) |
+| `assets/`, `docs/` | Logo, banner and screenshots |
+| `.github/` | CI and release workflows, issue templates, contributing and security notes |
 
 ## Guidelines
 

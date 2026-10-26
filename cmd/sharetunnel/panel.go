@@ -3,18 +3,15 @@ package main
 import (
 	"context"
 	"crypto/rand"
-	"embed"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"io/fs"
 	"net/http"
 	"sync"
 	"time"
-)
 
-//go:embed web
-var webFS embed.FS
+	"sharetunnel/web"
+)
 
 type Panel struct {
 	cfg   Config
@@ -230,8 +227,7 @@ func (p *Panel) logout(w http.ResponseWriter, r *http.Request) {
 
 func (p *Panel) routes() http.Handler {
 	mux := http.NewServeMux()
-	sub, _ := fs.Sub(webFS, "web")
-	static := http.FileServer(http.FS(sub))
+	static := http.FileServer(http.FS(web.Files))
 	mux.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-cache")
 		static.ServeHTTP(w, r)

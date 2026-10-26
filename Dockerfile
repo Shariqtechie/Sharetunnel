@@ -4,9 +4,9 @@ ARG TARGETOS TARGETARCH
 ARG VERSION=dev
 WORKDIR /src
 COPY go.mod ./
-COPY *.go ./
+COPY cmd ./cmd
 COPY web ./web
-RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -ldflags "-s -w -X main.version=${VERSION}" -o /sharetunnel .
+RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -ldflags "-s -w -X main.version=${VERSION}" -o /sharetunnel ./cmd/sharetunnel
 
 FROM cloudflare/cloudflared:latest AS cf
 
