@@ -3,6 +3,17 @@
 All notable changes to this project are documented here.
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versioning follows [SemVer](https://semver.org/).
 
+## [0.3.2] - 2026-10-26
+
+### Changed
+- **Updates page on CasaOS.** When ShareTunnel is installed through CasaOS, the Updates page now shows a clear "Updates are handled by CasaOS" card, which tells you to update from CasaOS for the best security and newest features. It stands out when a new version is out. Release notes stay, and the built-in "Update now" button and update preferences are hidden because CasaOS does the updating.
+
+### Fixed
+- CasaOS installs are now recognised automatically from the container itself. Before, the CasaOS behaviour only worked when `UPDATE_MODE=managed` was set, so an install created from an older store file still showed the built-in updater.
+
+### Added
+- `UPDATE_MODE=builtin` forces the built-in updater even on CasaOS. Leave `UPDATE_MODE` empty for automatic detection.
+
 ## [0.3.1] - 2026-10-25
 
 ### Added

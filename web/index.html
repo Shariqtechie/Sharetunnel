@@ -252,7 +252,14 @@
             <button class="btn hidden" id="applyBtn"><svg class="i"><use href="#i-download"/></svg>Update now</button>
           </div>
         </div>
-        <div class="grid2">
+        <div class="card managed-card hidden" id="managedCard">
+          <div class="upd-icon"><svg class="i"><use href="#i-hdd"/></svg></div>
+          <div class="grow">
+            <h3>Updates are handled by CasaOS</h3>
+            <div class="muted" id="managedText"></div>
+          </div>
+        </div>
+        <div class="grid2" id="updGrid">
           <div class="card"><div class="card-head"><h3>Release notes</h3><a class="link hidden" id="relLink" target="_blank" rel="noopener">Open on GitHub</a></div><div class="notes" id="notes"></div></div>
           <div class="card" id="prefsCard">
             <div class="card-head"><h3>Update preferences</h3></div>

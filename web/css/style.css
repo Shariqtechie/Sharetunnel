@@ -239,3 +239,9 @@ tbody tr:first-child td { border-top:0; } tbody tr { transition:background .12s;
 .forgot .cmdline { background:var(--surface); } .forgot .cmdline code { white-space:normal; overflow-wrap:break-word; border:0; padding:0; background:none; }
 #setupBlocked { text-align:left; margin-top:8px; }
 .pw-card { max-width:560px; margin-top:16px; }
+
+/* ---- updates page on CasaOS installs ---- */
+.grid2.single { grid-template-columns:1fr; }
+.managed-card { display:flex; align-items:center; gap:16px; margin-top:16px; }
+.managed-card h3 { margin:0 0 4px; }
+.managed-card.avail { border-color:var(--accent); background:var(--accent-soft); }

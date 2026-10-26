@@ -310,7 +310,7 @@ func (p *Panel) routes() http.Handler {
 		writeJSON(w, 200, map[string]bool{"ok": true})
 	}))
 	mux.HandleFunc("/api/update/settings", p.auth(true, func(w http.ResponseWriter, r *http.Request) {
-		if p.cfg.Managed {
+		if p.u.Managed() {
 			writeJSON(w, 400, map[string]string{"error": "Updates are managed by CasaOS"})
 			return
 		}

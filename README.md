@@ -138,7 +138,7 @@ All settings are environment variables.
 | Variable | Default | Description |
 |---|---|---|
 | `PANEL_PASSWORD` | *(optional)* | Sets the panel password from the environment. Leave it out and ShareTunnel asks you to create one on first open (stored hashed in the data folder). If set, it wins over a saved password. |
-| `UPDATE_MODE` | *(empty)* | Set to `managed` when an app store such as CasaOS handles updates. Turns off the built-in updater. |
+| `UPDATE_MODE` | *(empty)* | Empty = automatic: installs made through CasaOS are detected and updated by CasaOS, others use the built-in updater. `managed` forces "CasaOS updates it", `builtin` forces the built-in updater. |
 | `PANEL_PORT` | `9099` | Port of the web panel. |
 | `NC_CONTAINER` | `nextcloud` | Name of the Nextcloud container. |
 | `NC_URL` | `http://localhost:7580` | Address of Nextcloud as seen from the host. |

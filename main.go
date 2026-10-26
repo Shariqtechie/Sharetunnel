@@ -41,7 +41,8 @@ type Config struct {
 	TrustedIndex  string // the trusted_domains slot this app owns
 	PanelPort     string
 	DataDir       string
-	Managed       bool   // UPDATE_MODE=managed: an app store (CasaOS) updates this app, not the built-in updater
+	Managed       bool   // UPDATE_MODE=managed: force "an app store (CasaOS) updates this app"
+	Builtin       bool   // UPDATE_MODE=builtin: force the built-in updater, skip CasaOS detection
 	Repo          string // GitHub owner/name for update checks
 	SelfContainer string // this container's own name
 	Demo          bool   // DEMO=true: fake data, no Docker or tunnel needed
@@ -63,6 +64,7 @@ func loadConfig() Config {
 		PanelPort:     getenv("PANEL_PORT", "9099"),
 		DataDir:       getenv("DATA_DIR", "/data"),
 		Managed:       os.Getenv("UPDATE_MODE") == "managed",
+		Builtin:       os.Getenv("UPDATE_MODE") == "builtin",
 		Repo:          getenv("GITHUB_REPO", "Shariqtechie/Sharetunnel"),
 		SelfContainer: getenv("SELF_CONTAINER", "sharetunnel"),
 		Demo:          os.Getenv("DEMO") == "true",

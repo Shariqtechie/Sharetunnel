@@ -320,3 +320,58 @@ func TestFreshInstallTunnelStartsOff(t *testing.T) {
 		t.Error("a fresh install must not start the tunnel by itself")
 	}
 }
+
+// ---- CasaOS detection (updates are handled by CasaOS) ----
+
+func managedFor(t *testing.T, labelsJSON string, tweak func(*Config)) bool {
+	t.Helper()
+	fakeDocker(t, `[ "$1" = inspect ] && echo '`+labelsJSON+`' || true`)
+	cfg := loadConfig()
+	if tweak != nil {
+		tweak(&cfg)
+	}
+	return NewUpdater(cfg, NewManager(cfg, false)).Managed()
+}
+
+func TestDetectsCasaOSFromLabels(t *testing.T) {
+	// what the store install carries: an icon link that names the store, plus compose labels
+	casa := `{"com.docker.compose.project":"sharetunnel","icon":"https://raw.githubusercontent.com/Shariqtechie/sharetunnel-casaos-store/main/Apps/ShareTunnel/icon.png"}`
+	if !managedFor(t, casa, nil) {
+		t.Error("a container with CasaOS labels must be treated as managed")
+	}
+	if !managedFor(t, `{"com.docker.compose.project.config_files":"/var/lib/casaos/apps/sharetunnel/docker-compose.yml"}`, nil) {
+		t.Error("a compose file under /var/lib/casaos must count as managed")
+	}
+	for name, labels := range map[string]string{
+		"no labels":     `null`,
+		"empty labels":  `{}`,
+		"plain compose": `{"com.docker.compose.project":"mystack","com.docker.compose.service":"sharetunnel"}`,
+		"image labels":  `{"org.opencontainers.image.title":"ShareTunnel","org.opencontainers.image.source":"https://github.com/Shariqtechie/Sharetunnel"}`,
+		"not even json": `oops`,
+	} {
+		if managedFor(t, labels, nil) {
+			t.Errorf("%s: a normal Docker install must keep the built-in updater", name)
+		}
+	}
+}
+
+func TestUpdateModeOverridesDetection(t *testing.T) {
+	casa := `{"icon":"https://example.com/casaos-store/icon.png"}`
+	if managedFor(t, casa, func(c *Config) { c.Builtin = true }) {
+		t.Error("UPDATE_MODE=builtin must turn the built-in updater back on")
+	}
+	if !managedFor(t, `null`, func(c *Config) { c.Managed = true }) {
+		t.Error("UPDATE_MODE=managed must force managed mode")
+	}
+	if managedFor(t, casa, func(c *Config) { c.Demo = true }) {
+		t.Error("demo mode never detects CasaOS")
+	}
+}
+
+func TestDockerMissingMeansNotManaged(t *testing.T) {
+	fakeDocker(t, `echo "Cannot connect to the Docker daemon" >&2; exit 1`)
+	cfg := loadConfig()
+	if NewUpdater(cfg, NewManager(cfg, false)).Managed() {
+		t.Error("when Docker can't be read, assume the normal built-in updater")
+	}
+}

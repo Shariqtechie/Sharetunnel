@@ -197,8 +197,12 @@ function renderUpdate() {
   ic.className = "upd-icon" + (u.available ? " avail" : u.error ? " bad" : ""); ic.replaceChildren(icon(u.available ? "download" : u.error ? "alert" : "check"));
   $("#updTitle").textContent = u.available ? "Version " + u.latest + " is available" : u.error ? "Couldn't check for updates" : u.dev ? "Development build" : u.checked_at ? "You're up to date" : "Not checked yet";
   $("#updSub").textContent = u.available ? "You have " + ver(u.current) + ". Your tunnel is back about 30 seconds after updating." : u.error ? u.error : u.dev ? "Update checks apply to official releases." : u.checked_at ? ver(u.current) + " is the latest version. Checked " + rel(u.checked_at) + "." : "Press the button to look for a new version.";
-  if (u.managed && u.available) $("#updSub").textContent = "You have " + ver(u.current) + ". Updates are managed by CasaOS: open this app's menu in CasaOS and choose Update.";
-  $("#applyBtn").classList.toggle("hidden", !u.available || !!u.managed); $("#prefsCard").classList.toggle("hidden", !!u.managed);
+  const mg = !!u.managed;
+  if (mg && u.available) $("#updSub").textContent = "You have " + ver(u.current) + ". Update from CasaOS for the best security and newest features (see below).";
+  $("#applyBtn").classList.toggle("hidden", !u.available || mg); $("#prefsCard").classList.toggle("hidden", mg);
+  $("#managedCard").classList.toggle("hidden", !mg); $("#managedCard").classList.toggle("avail", mg && !!u.available); $("#updGrid").classList.toggle("single", mg);
+  const how = "open this app's menu in CasaOS (the three dots on its icon) and choose Update. Your settings and shared links are kept.";
+  $("#managedText").textContent = u.available ? "Version " + u.latest + " is out. For the best security and newest features, update now from CasaOS: " + how : "ShareTunnel is installed through CasaOS, so CasaOS handles updates, and a new version will show up here. To update for the best security and newest features, " + how;
   const rl = $("#relLink"); rl.classList.toggle("hidden", !u.url); if (u.url) rl.href = u.url;
   renderNotes(u.latest ? u.notes : undefined);
   $$("#modes input").forEach(r => r.checked = r.value === u.mode); $("#hourBox").classList.toggle("hidden", u.mode !== "auto"); if (u.hour != null) $("#hour").value = u.hour;

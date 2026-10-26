@@ -81,11 +81,57 @@ type Updater struct {
 	m    *Manager
 	mu   sync.Mutex
 	info UpdateInfo
+
+	managedOnce sync.Once
+	managed     bool
+}
+
+// detectManaged reports whether this container was installed through CasaOS (or
+// ZimaOS). Those apps must be updated by CasaOS: if ShareTunnel swapped its own
+// container, CasaOS would lose track of it. Detection looks at the container's
+// labels, which CasaOS sets (the store file also adds an icon link that names it).
+func detectManaged(self string) (bool, string) {
+	out, err := exec.Command("docker", "inspect", "-f", "{{json .Config.Labels}}", self).Output()
+	if err != nil {
+		return false, ""
+	}
+	var labels map[string]string
+	if json.Unmarshal(out, &labels) != nil {
+		return false, ""
+	}
+	for k, v := range labels {
+		for _, text := range []string{strings.ToLower(k), strings.ToLower(v)} {
+			if strings.Contains(text, "casaos") || strings.Contains(text, "zimaos") {
+				return true, k
+			}
+		}
+	}
+	return false, ""
+}
+
+// Managed is true when an app store (CasaOS) handles updates instead of ShareTunnel.
+// UPDATE_MODE=managed forces it on, UPDATE_MODE=builtin forces it off; otherwise it is detected once.
+func (u *Updater) Managed() bool {
+	u.managedOnce.Do(func() {
+		switch {
+		case u.cfg.Managed:
+			u.managed = true
+		case u.cfg.Builtin || u.cfg.Demo:
+			u.managed = false
+		default:
+			if ok, why := detectManaged(u.cfg.SelfContainer); ok {
+				u.managed = true
+				u.m.logf("Installed through CasaOS (detected from container label %q): updates are handled by CasaOS", why)
+			}
+		}
+	})
+	return u.managed
 }
 
 func NewUpdater(cfg Config, m *Manager) *Updater { return &Updater{cfg: cfg, m: m} }
 
 func (u *Updater) Info() UpdateInfo {
+	managed := u.Managed()
 	s := loadSettings(u.cfg)
 	u.mu.Lock()
 	defer u.mu.Unlock()
@@ -94,7 +140,7 @@ func (u *Updater) Info() UpdateInfo {
 	_, ok := parseVer(version)
 	i.Dev = !ok
 	i.Mode, i.Hour = s.UpdateMode, s.AutoHour
-	i.Managed = u.cfg.Managed
+	i.Managed = managed
 	return i
 }
 
@@ -157,7 +203,7 @@ func (u *Updater) Apply() error {
 	if u.cfg.Demo {
 		return errors.New("updates are disabled in demo mode")
 	}
-	if u.cfg.Managed {
+	if u.Managed() {
 		return errors.New("updates are managed by your app store (CasaOS). Use Update in the app's menu there")
 	}
 	u.mu.Lock()
@@ -207,7 +253,7 @@ func (u *Updater) loop(ctx context.Context) {
 		case <-timer.C:
 		}
 		s := loadSettings(u.cfg)
-		if s.UpdateMode != "off" {
+		if s.UpdateMode != "off" || u.Managed() { // CasaOS installs always check, so the page can say when to update
 			u.mu.Lock()
 			stale := time.Since(time.Unix(u.info.CheckedAt, 0)) > 6*time.Hour
 			u.mu.Unlock()
@@ -215,7 +261,7 @@ func (u *Updater) loop(ctx context.Context) {
 				u.Check()
 			}
 			info := u.Info()
-			if s.UpdateMode == "auto" && !u.cfg.Managed && info.Available && time.Now().Hour() == s.AutoHour && s.AutoTried != info.Latest {
+			if s.UpdateMode == "auto" && !u.Managed() && info.Available && time.Now().Hour() == s.AutoHour && s.AutoTried != info.Latest {
 				updateSettings(u.cfg, func(s *Settings) { s.AutoTried = info.Latest }) // never retry the same version automatically
 				u.m.logf("Auto-update to %s", info.Latest)
 				if err := u.Apply(); err != nil {
