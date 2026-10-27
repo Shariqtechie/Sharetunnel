@@ -241,7 +241,7 @@ func serve(cfg Config) {
 		os.Exit(1)
 	}
 	m := NewManager(cfg, true)
-	if loadSettings(cfg).Enabled {
+	if cfg.Demo || loadSettings(cfg).Enabled { // the demo always shows a running tunnel
 		m.Start()
 	}
 	u := NewUpdater(cfg, m)
