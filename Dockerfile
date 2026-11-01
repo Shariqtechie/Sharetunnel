@@ -10,7 +10,7 @@ RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -ldflags "-s -w -X 
 
 FROM cloudflare/cloudflared:latest AS cf
 
-FROM alpine:3.20
+FROM alpine:3.24
 LABEL org.opencontainers.image.title="ShareTunnel" \
       org.opencontainers.image.description="Share Nextcloud files with anyone through a temporary public link. No domain, no port forwarding." \
       org.opencontainers.image.source="https://github.com/Shariqtechie/Sharetunnel" \
